@@ -48,6 +48,18 @@ export interface CanvasModuleItem {
   external_url?: string;
 }
 
+export interface CanvasFile {
+  id: number;
+  display_name: string;
+  filename: string;
+  content_type: string;
+  url: string;
+  size: number;
+  created_at: string;
+  updated_at: string;
+  folder_id: number;
+}
+
 // Study Material Types
 export interface Flashcard {
   id: string;

@@ -14,8 +14,9 @@ import CreateAccountScreen from '../screens/CreateAccountScreen';
 import LoginScreen from '../screens/LoginScreen';
 import StudyQueueScreen from '../screens/StudyQueueScreen';
 import ContentCreatorScreen from '../screens/ContentCreatorScreen';
-import SkillsCoachScreen from '../screens/SkillsCoachScreen';
+import ChatbotScreen from '../screens/ChatbotScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import FlashcardCreationScreen from '../screens/FlashcardCreationScreen';
 import FlashcardStudyScreen from '../screens/FlashcardStudyScreen';
 import QuizStudyScreen from '../screens/QuizStudyScreen';
 import ContentViewerScreen from '../screens/ContentViewerScreen';
@@ -45,12 +46,18 @@ export type RootStackParamList = {
 export type MainTabParamList = {
   [ROUTES.STUDY_QUEUE]: undefined;
   [ROUTES.CONTENT_CREATOR]: undefined;
-  [ROUTES.SKILLS_COACH]: undefined;
+  [ROUTES.CHATBOT]: undefined;
   [ROUTES.SETTINGS]: undefined;
+};
+
+export type ContentCreatorStackParamList = {
+  [ROUTES.CONTENT_CREATOR]: undefined;
+  [ROUTES.FLASHCARD_CREATION]: undefined;
 };
 
 export type StudyStackParamList = {
   [ROUTES.STUDY_QUEUE]: undefined;
+  [ROUTES.FLASHCARD_CREATION]: undefined;
   [ROUTES.FLASHCARD_STUDY]: { flashcardIds: string[]; courseId?: number };
   [ROUTES.QUIZ_STUDY]: { quizId: string };
   [ROUTES.CONTENT_VIEWER]: { contentType: string; contentId: string };
@@ -67,6 +74,7 @@ export type SettingsStackParamList = {
 const RootStack = createStackNavigator<RootStackParamList>();
 const MainTab = createBottomTabNavigator<MainTabParamList>();
 const StudyStack = createStackNavigator<StudyStackParamList>();
+const ContentCreatorStack = createStackNavigator<ContentCreatorStackParamList>();
 const SettingsStack = createStackNavigator<SettingsStackParamList>();
 
 // Study Stack Navigator
@@ -89,6 +97,11 @@ function StudyStackNavigator() {
         options={{ title: 'Study Queue' }}
       />
       <StudyStack.Screen 
+        name={ROUTES.FLASHCARD_CREATION} 
+        component={FlashcardCreationScreen}
+        options={{ title: 'Create Flashcards', headerShown: false }}
+      />
+      <StudyStack.Screen 
         name={ROUTES.FLASHCARD_STUDY} 
         component={FlashcardStudyScreen}
         options={{ title: 'Flashcard Study' }}
@@ -104,6 +117,34 @@ function StudyStackNavigator() {
         options={{ title: 'Study Content' }}
       />
     </StudyStack.Navigator>
+  );
+}
+
+// Content Creator Stack Navigator
+function ContentCreatorStackNavigator() {
+  return (
+    <ContentCreatorStack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: THEME.colors.primary,
+        },
+        headerTintColor: '#fff',
+        headerTitleStyle: {
+          fontWeight: 'bold',
+        },
+      }}
+    >
+      <ContentCreatorStack.Screen 
+        name={ROUTES.CONTENT_CREATOR} 
+        component={ContentCreatorScreen}
+        options={{ title: 'Content Creator', headerShown: false }}
+      />
+      <ContentCreatorStack.Screen 
+        name={ROUTES.FLASHCARD_CREATION} 
+        component={FlashcardCreationScreen}
+        options={{ title: 'Create Flashcards', headerShown: false }}
+      />
+    </ContentCreatorStack.Navigator>
   );
 }
 
@@ -165,7 +206,7 @@ function MainAppNavigator() {
             case ROUTES.CONTENT_CREATOR:
               iconName = focused ? 'create' : 'create-outline';
               break;
-            case ROUTES.SKILLS_COACH:
+            case ROUTES.CHATBOT:
               iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
               break;
             case ROUTES.SETTINGS:
@@ -193,13 +234,13 @@ function MainAppNavigator() {
       />
       <MainTab.Screen 
         name={ROUTES.CONTENT_CREATOR} 
-        component={ContentCreatorScreen}
+        component={ContentCreatorStackNavigator}
         options={{ title: 'Create Content' }}
       />
       <MainTab.Screen 
-        name={ROUTES.SKILLS_COACH} 
-        component={SkillsCoachScreen}
-        options={{ title: 'Skills Coach' }}
+        name={ROUTES.CHATBOT} 
+        component={ChatbotScreen}
+        options={{ title: 'Study Assistant' }}
       />
       <MainTab.Screen 
         name={ROUTES.SETTINGS} 

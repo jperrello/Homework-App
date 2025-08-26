@@ -8,24 +8,16 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Modal,
-  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { THEME } from '../constants';
 import canvasService from '../services/canvasService';
-import { CanvasCourse, CanvasAssignment } from '../types';
 
 export default function ContentCreatorScreen() {
-  const [courses, setCourses] = useState<CanvasCourse[]>([]);
-  const [completedCourses, setCompletedCourses] = useState<CanvasCourse[]>([]);
-  const [selectedCourse, setSelectedCourse] = useState<CanvasCourse | null>(null);
-  const [assignments, setAssignments] = useState<CanvasAssignment[]>([]);
+  const navigation = useNavigation<any>();
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [showCourseModal, setShowCourseModal] = useState(false);
-  const [loadingAssignments, setLoadingAssignments] = useState(false);
-  const [activeTab, setActiveTab] = useState<'current' | 'previous'>('current');
 
   useEffect(() => {
     checkCanvasConnection();
@@ -37,10 +29,6 @@ export default function ContentCreatorScreen() {
       if (canvasService.isAuthenticated()) {
         const testResult = await canvasService.testConnection();
         setIsConnected(testResult);
-        
-        if (testResult) {
-          await loadCourses();
-        }
       }
     } catch (error) {
       console.error('Error checking Canvas connection:', error);
@@ -48,55 +36,6 @@ export default function ContentCreatorScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const loadCourses = async () => {
-    try {
-      const [currentResponse, completedResponse] = await Promise.all([
-        canvasService.getUserCourses(),
-        canvasService.getCompletedCourses()
-      ]);
-      
-      if (currentResponse.success) {
-        setCourses(currentResponse.data);
-      } else {
-        Alert.alert('Error', currentResponse.error || 'Failed to load current courses');
-      }
-      
-      if (completedResponse.success) {
-        setCompletedCourses(completedResponse.data);
-      } else {
-        console.warn('Failed to load completed courses:', completedResponse.error);
-      }
-    } catch (error) {
-      console.error('Error loading courses:', error);
-      Alert.alert('Error', 'Failed to load courses');
-    }
-  };
-
-  const loadAssignments = async (courseId: number) => {
-    setLoadingAssignments(true);
-    try {
-      const response = await canvasService.getCourseAssignments(courseId);
-      if (response.success) {
-        setAssignments(response.data);
-      } else {
-        Alert.alert('Error', response.error || 'Failed to load assignments');
-        setAssignments([]);
-      }
-    } catch (error) {
-      console.error('Error loading assignments:', error);
-      Alert.alert('Error', 'Failed to load assignments');
-      setAssignments([]);
-    } finally {
-      setLoadingAssignments(false);
-    }
-  };
-
-  const handleCourseSelect = async (course: CanvasCourse) => {
-    setSelectedCourse(course);
-    setShowCourseModal(false);
-    await loadAssignments(course.id);
   };
 
   const contentTypes = [
@@ -137,19 +76,23 @@ export default function ContentCreatorScreen() {
     },
   ];
 
-  const handleContentTypePress = (contentType: string) => {
-    if (!isConnected) {
-      Alert.alert('Canvas Not Connected', 'Please connect to Canvas first to generate content from your courses.');
-      return;
+
+  const handleContentTypePress = async (contentType: string) => {
+    switch (contentType) {
+      case 'flashcards':
+        navigation.navigate('FlashcardCreation');
+        break;
+      case 'quiz':
+      case 'summary':
+        Alert.alert('Coming Soon', `${contentType} generation will be available soon!`);
+        break;
+      case 'video':
+      case 'podcast':
+        Alert.alert('Coming Soon', 'This feature is not yet available.');
+        break;
+      default:
+        Alert.alert('Unknown Content Type', 'This content type is not supported.');
     }
-    
-    if (!selectedCourse) {
-      Alert.alert('No Course Selected', 'Please select a course first to generate content.');
-      return;
-    }
-    
-    // TODO: Navigate to content generation screens with selected course data
-    Alert.alert('Coming Soon', `${contentType} generation will be available soon!\n\nSelected course: ${selectedCourse.name}\nAssignments: ${assignments.length}`);
   };
 
   return (
@@ -183,60 +126,36 @@ export default function ContentCreatorScreen() {
           </View>
         ) : (
           <>
-            <View style={styles.courseSelectorContainer}>
-              <Text style={styles.sectionTitle}>Select a Course</Text>
-              <TouchableOpacity 
-                style={styles.courseSelector}
-                onPress={() => setShowCourseModal(true)}
-              >
-                <Text style={[styles.courseSelectorText, selectedCourse && styles.selectedCourseText]}>
-                  {selectedCourse ? selectedCourse.name : 'Choose from your Canvas courses'}
-                </Text>
-                <Ionicons name="chevron-down" size={20} color={THEME.colors.textSecondary} />
-              </TouchableOpacity>
-              
-              {selectedCourse && (
-                <View style={styles.courseInfo}>
-                  <Text style={styles.courseInfoText}>
-                    Course Code: {selectedCourse.course_code}
-                  </Text>
-                  {loadingAssignments ? (
-                    <Text style={styles.courseInfoText}>Loading assignments...</Text>
-                  ) : (
-                    <Text style={styles.courseInfoText}>
-                      {assignments.length} assignments available
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Content Types</Text>
+              {contentTypes.map((type) => (
+                <TouchableOpacity
+                  key={type.id}
+                  style={styles.contentTypeCard}
+                  onPress={() => handleContentTypePress(type.id)}
+                >
+                  <View style={[styles.iconContainer, { backgroundColor: type.color }]}>
+                    <Ionicons name={type.icon} size={24} color="#fff" />
+                  </View>
+                  <View style={styles.contentTypeInfo}>
+                    <Text style={styles.contentTypeTitle}>
+                      {type.title}
                     </Text>
-                  )}
-                </View>
-              )}
+                    <Text style={styles.contentTypeDescription}>
+                      {type.description}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={THEME.colors.textSecondary} />
+                </TouchableOpacity>
+              ))}
             </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Content Types</Text>
-          {contentTypes.map((type) => (
-            <TouchableOpacity
-              key={type.id}
-              style={styles.contentTypeCard}
-              onPress={() => handleContentTypePress(type.id)}
-            >
-              <View style={[styles.iconContainer, { backgroundColor: type.color }]}>
-                <Ionicons name={type.icon} size={24} color="#fff" />
-              </View>
-              <View style={styles.contentTypeInfo}>
-                <Text style={styles.contentTypeTitle}>{type.title}</Text>
-                <Text style={styles.contentTypeDescription}>{type.description}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={THEME.colors.textSecondary} />
-            </TouchableOpacity>
-          ))}
-        </View>
 
             <View style={styles.recentSection}>
               <Text style={styles.sectionTitle}>Recent Generations</Text>
               <View style={styles.emptyState}>
                 <Text style={styles.emptyStateText}>No content generated yet</Text>
                 <Text style={styles.emptyStateSubtext}>
-                  Select a course and choose a content type to get started
+                  Select a content type to get started
                 </Text>
               </View>
             </View>
@@ -244,76 +163,6 @@ export default function ContentCreatorScreen() {
         )}
       </ScrollView>
 
-      {/* Course Selection Modal */}
-      <Modal
-        visible={showCourseModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowCourseModal(false)}>
-              <Text style={styles.modalCancel}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Select Course</Text>
-            <View style={styles.modalSpacer} />
-          </View>
-          
-          {/* Tab Navigation */}
-          <View style={styles.tabContainer}>
-            <TouchableOpacity
-              style={[styles.tab, activeTab === 'current' && styles.activeTab]}
-              onPress={() => setActiveTab('current')}
-            >
-              <Text style={[styles.tabText, activeTab === 'current' && styles.activeTabText]}>
-                Current ({courses.length})
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tab, activeTab === 'previous' && styles.activeTab]}
-              onPress={() => setActiveTab('previous')}
-            >
-              <Text style={[styles.tabText, activeTab === 'previous' && styles.activeTabText]}>
-                Previous ({completedCourses.length})
-              </Text>
-            </TouchableOpacity>
-          </View>
-          
-          <FlatList
-            data={activeTab === 'current' ? courses : completedCourses}
-            keyExtractor={(item) => item.id.toString()}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.courseItem}
-                onPress={() => handleCourseSelect(item)}
-              >
-                <View>
-                  <Text style={styles.courseItemTitle}>{item.name}</Text>
-                  <Text style={styles.courseItemSubtitle}>
-                    {item.course_code} • ID: {item.id}
-                    {activeTab === 'previous' && ' • Completed'}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={THEME.colors.textSecondary} />
-              </TouchableOpacity>
-            )}
-            style={styles.coursesList}
-            ListEmptyComponent={() => (
-              <View style={styles.emptyTabState}>
-                <Text style={styles.emptyTabStateText}>
-                  {activeTab === 'current' ? 'No current courses found' : 'No completed courses found'}
-                </Text>
-                <Text style={styles.emptyTabStateSubtext}>
-                  {activeTab === 'current' 
-                    ? 'Make sure you are enrolled in active courses on Canvas'
-                    : 'Complete some courses to see them here'
-                  }
-                </Text>
-              </View>
-            )}
-          />
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -437,6 +286,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+  },
+  contentTypeCardDisabled: {
+    opacity: 0.7,
   },
   iconContainer: {
     width: 48,

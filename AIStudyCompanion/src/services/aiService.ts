@@ -159,16 +159,28 @@ class AIService {
       };
     } catch (error: any) {
       console.error('AI Service Error:', error);
+      console.error('Error Response Status:', error.response?.status);
+      console.error('Error Response Data:', error.response?.data);
       
       let errorMessage = `Failed to generate AI content using ${this.provider}`;
       if (error.response?.status === 401) {
         errorMessage = `${this.provider} API authentication failed. Check your API key.`;
       } else if (error.response?.status === 429) {
-        errorMessage = `${this.provider} API rate limit exceeded. Please try again later.`;
+        const errorType = error.response?.data?.error?.code;
+        const rateLimitReason = error.response?.data?.error?.message || 'Rate limit exceeded';
+        
+        if (errorType === 'insufficient_quota') {
+          errorMessage = `OpenAI API quota exceeded. Please add billing credits to your OpenAI account or use a different API key.`;
+        } else {
+          const retryAfter = error.response?.headers['retry-after'] || 'unknown';
+          errorMessage = `${this.provider} API rate limit exceeded. ${rateLimitReason}. Retry after: ${retryAfter}`;
+        }
       } else if (error.response?.status >= 500) {
         errorMessage = `${this.provider} service temporarily unavailable`;
       } else if (error.code === 'ECONNREFUSED' || error.code === 'NETWORK_ERROR') {
         errorMessage = `Network error connecting to ${this.provider} service`;
+      } else if (error.response?.data?.error?.message) {
+        errorMessage = `${this.provider} API error: ${error.response.data.error.message}`;
       }
 
       return {
@@ -545,6 +557,7 @@ Include a variety of prompt types that encourage different kinds of thinking.`;
       previousMessages?: ChatMessage[];
       courseContext?: { courseName: string; courseId: number; topic?: string };
       customInstructions?: CustomInstructions;
+      canvasData?: string;
     }
   ): Promise<APIResponse<string>> {
     const customPrompt = context.customInstructions ? 
@@ -560,6 +573,9 @@ Your role is to:
 - Help students develop metacognitive skills
 - Connect concepts to real-world applications
 - Suggest effective study strategies
+- Use Canvas course data when available to provide specific, relevant guidance
+
+When you have access to Canvas course data, reference specific assignments, deadlines, modules, and course materials to give personalized advice.
 
 Be supportive, patient, and focus on helping the student learn rather than just providing information.`;
 
@@ -574,9 +590,11 @@ Be supportive, patient, and focus on helping the student learn rather than just 
     const courseContext = context.courseContext ? 
       `Course: ${context.courseContext.courseName}${context.courseContext.topic ? `, Topic: ${context.courseContext.topic}` : ''}\n` : '';
 
-    const userPrompt = `${courseContext}${conversationContext}Student: ${message}
+    const canvasContext = context.canvasData ? `\n${context.canvasData}\n` : '';
 
-Respond as a helpful study coach. Ask questions that help the student think more deeply about the topic.`;
+    const userPrompt = `${courseContext}${canvasContext}${conversationContext}Student: ${message}
+
+Respond as a helpful study coach. When Canvas course data is available, use it to provide specific guidance about assignments, deadlines, and course materials. Ask questions that help the student think more deeply about the topic.`;
 
     const model = aiConfig.getModelForTask('chat');
     return this.callLLM(systemPrompt, userPrompt, model, 0.8); // Slightly higher temperature for more conversational responses

@@ -123,10 +123,11 @@ export const ROUTES = {
   // Main App Tabs
   STUDY_QUEUE: 'StudyQueue',
   CONTENT_CREATOR: 'ContentCreator',
-  SKILLS_COACH: 'SkillsCoach',
+  CHATBOT: 'Chatbot',
   SETTINGS: 'Settings',
   
   // Study Stack
+  FLASHCARD_CREATION: 'FlashcardCreation',
   FLASHCARD_STUDY: 'FlashcardStudy',
   QUIZ_STUDY: 'QuizStudy',
   CONTENT_VIEWER: 'ContentViewer',
