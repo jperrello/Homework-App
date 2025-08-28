@@ -4,10 +4,12 @@ import {
   CanvasAssignment, 
   CanvasModule,
   APIResponse,
-  CustomInstructions 
+  CustomInstructions,
+  UserPreferences
 } from '../types';
 import aiService from './aiService';
 import canvasService from './canvasService';
+import userPreferencesService from './userPreferencesService';
 
 export interface CourseContext {
   course: CanvasCourse;
@@ -30,6 +32,35 @@ class ChatbotService {
   private userCourses: CanvasCourse[] = [];
   private completedCourses: CanvasCourse[] = [];
   private allCourses: CanvasCourse[] = [];
+
+  // Load user preferences from storage
+  private async getUserPreferences(): Promise<UserPreferences | null> {
+    try {
+      // Get both custom instructions and study preferences
+      const [customInstructions, studyPreferences] = await Promise.all([
+        userPreferencesService.getCustomInstructions(),
+        userPreferencesService.getStudyPreferences()
+      ]);
+
+      // Convert our new preference format to the legacy UserPreferences interface
+      return {
+        favorite_subjects: [],
+        difficult_subjects: [],
+        preferred_learning_style: customInstructions.learning_style,
+        study_goals: [],
+        preferred_study_times: studyPreferences.preferred_study_times,
+        optimal_study_duration: studyPreferences.session_length_minutes,
+        hobbies: [],
+        career_goals: [],
+        content_format_preference: [customInstructions.format_preference.replace('_', ' ')],
+        explanation_style: customInstructions.tone,
+        difficulty_preference: customInstructions.difficulty_preference
+      };
+    } catch (error) {
+      console.error('Error loading user preferences in chatbot:', error);
+      return null;
+    }
+  }
 
   async initialize(): Promise<void> {
     try {
@@ -215,7 +246,7 @@ class ChatbotService {
         const dueDate = assignment.due_at ? 
           new Date(assignment.due_at).toLocaleDateString() : 
           'No due date';
-        response += `${index + 1}. **${assignment.name}**\n   Due: ${dueDate}\n   Points: ${assignment.points_possible}\n\n`;
+        response += `${index + 1}. ${assignment.name}\n   Due: ${dueDate}\n   Points: ${assignment.points_possible}\n\n`;
       });
 
       if (upcomingAssignments.length === 0) {
@@ -256,7 +287,7 @@ class ChatbotService {
       dueSoon.forEach((assignment, index) => {
         const dueDate = new Date(assignment.due_at!);
         const daysUntilDue = Math.ceil((dueDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-        response += `${index + 1}. **${assignment.name}**\n   Due: ${dueDate.toLocaleDateString()} (${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''})\n\n`;
+        response += `${index + 1}. ${assignment.name}\n   Due: ${dueDate.toLocaleDateString()} (${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''})\n\n`;
       });
 
       return {
@@ -320,7 +351,7 @@ class ChatbotService {
       
       // For flashcard requests, direct user to Content Creator
       return {
-        message: `I can help you understand your course material for ${courseContext.course.name}, but for generating flashcards, you'll want to use the **Content Creator** tab. \n\nThere you can:\n• Select your course\n• Generate AI-powered flashcards from your assignments and materials\n• Study them with our interactive flashcard system\n\nMeanwhile, I can help answer questions about your course content, assignments, and study strategies!`,
+        message: `I can help you understand your course material for ${courseContext.course.name}, but for generating flashcards, you'll want to use the Content Creator tab. \n\nThere you can:\n• Select your course\n• Generate AI-powered flashcards from your assignments and materials\n• Study them with our interactive flashcard system\n\nMeanwhile, I can help answer questions about your course content, assignments, and study strategies!`,
         courseContext: courseContext.course,
         suggestedActions: [
           'Show me my assignments',
@@ -475,9 +506,9 @@ class ChatbotService {
         
         // Show active courses first
         if (this.userCourses.length > 0) {
-          response += "**Your Current Courses:**\n\n";
+          response += "Your Current Courses:\n\n";
           this.userCourses.forEach((course, index) => {
-            response += `${index + 1}. **${course.name}**`;
+            response += `${index + 1}. ${course.name}`;
             if (course.course_code) {
               response += ` (${course.course_code})`;
             }
@@ -488,9 +519,9 @@ class ChatbotService {
         
         // Show completed courses if any
         if (this.completedCourses.length > 0) {
-          response += "**Your Completed Courses:**\n\n";
+          response += "Your Completed Courses:\n\n";
           this.completedCourses.forEach((course, index) => {
-            response += `${index + 1}. **${course.name}**`;
+            response += `${index + 1}. ${course.name}`;
             if (course.course_code) {
               response += ` (${course.course_code})`;
             }
@@ -587,11 +618,11 @@ class ChatbotService {
         
         // Show overdue assignments first (priority!)
         if (overdueAssignments.length > 0) {
-          response += `🚨 **OVERDUE ASSIGNMENTS** (${overdueAssignments.length}):\n\n`;
+          response += `🚨 OVERDUE ASSIGNMENTS (${overdueAssignments.length}):\n\n`;
           overdueAssignments.slice(0, 5).forEach((item, index) => {
             const dueDate = new Date(item.assignment.due_at!);
             const daysOverdue = Math.ceil((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-            response += `${index + 1}. **${item.assignment.name}** (${item.courseName})\n`;
+            response += `${index + 1}. ${item.assignment.name} (${item.courseName})\n`;
             response += `   📅 Was due: ${dueDate.toLocaleDateString()} (${daysOverdue} days ago)\n`;
             response += `   📝 Points: ${item.assignment.points_possible}\n`;
             if (item.assignment.description) {
@@ -604,10 +635,10 @@ class ChatbotService {
         
         // Show upcoming assignments
         if (upcomingAssignments.length > 0) {
-          response += `📚 **UPCOMING ASSIGNMENTS** (${upcomingAssignments.length}):\n\n`;
+          response += `📚 UPCOMING ASSIGNMENTS (${upcomingAssignments.length}):\n\n`;
           upcomingAssignments.slice(0, 8).forEach((item, index) => {
             const dueDate = item.assignment.due_at ? new Date(item.assignment.due_at) : null;
-            response += `${index + 1}. **${item.assignment.name}** (${item.courseName})\n`;
+            response += `${index + 1}. ${item.assignment.name} (${item.courseName})\n`;
             
             if (dueDate) {
               const daysUntilDue = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -698,10 +729,10 @@ class ChatbotService {
           return bDate - aDate;
         });
         
-        let response = `📁 **Recent Files from Your Courses** (${allFiles.length} total):\n\n`;
+        let response = `📁 Recent Files from Your Courses (${allFiles.length} total):\n\n`;
         
         allFiles.slice(0, 15).forEach((item, index) => {
-          response += `${index + 1}. **${item.file.display_name || item.file.filename}**`;
+          response += `${index + 1}. ${item.file.display_name || item.file.filename}`;
           
           // Add file type emoji
           const fileName = item.file.display_name || item.file.filename;
@@ -838,9 +869,9 @@ class ChatbotService {
       let canvasContext = '';
       if (this.allCourses.length > 0) {
         canvasContext += `\n## Student's Canvas Context\n\n`;
-        canvasContext += `**Active Courses (${this.userCourses.length}):** ${this.userCourses.map(c => c.name).join(', ')}\n`;
+        canvasContext += `Active Courses (${this.userCourses.length}): ${this.userCourses.map(c => c.name).join(', ')}\n`;
         if (this.completedCourses.length > 0) {
-          canvasContext += `**Completed Courses (${this.completedCourses.length}):** ${this.completedCourses.map(c => c.name).join(', ')}\n`;
+          canvasContext += `Completed Courses (${this.completedCourses.length}): ${this.completedCourses.map(c => c.name).join(', ')}\n`;
         }
         canvasContext += '\nI have full access to all course assignments, files, modules, and materials. I can provide specific details about due dates, assignment descriptions, course content, and study materials without the student needing to provide those details.\n';
       }
@@ -915,13 +946,13 @@ class ChatbotService {
     let canvasData = `## Canvas Course Data for ${courseContext.course.name}\n\n`;
     
     // Add course info
-    canvasData += `**Course Code:** ${courseContext.course.course_code}\n`;
-    canvasData += `**Course ID:** ${courseContext.course.id}\n`;
-    canvasData += `**Workflow State:** ${courseContext.course.workflow_state}\n\n`;
+    canvasData += `Course Code: ${courseContext.course.course_code}\n`;
+    canvasData += `Course ID: ${courseContext.course.id}\n`;
+    canvasData += `Workflow State: ${courseContext.course.workflow_state}\n\n`;
 
     // Add assignments
     if (courseContext.assignments && courseContext.assignments.length > 0) {
-      canvasData += `**Assignments (${courseContext.assignments.length} total):**\n`;
+      canvasData += `Assignments (${courseContext.assignments.length} total):\n`;
       courseContext.assignments.slice(0, 10).forEach((assignment, index) => {
         const dueDate = assignment.due_at ? 
           new Date(assignment.due_at).toLocaleDateString() : 'No due date';
@@ -939,7 +970,7 @@ class ChatbotService {
 
     // Add modules
     if (courseContext.modules && courseContext.modules.length > 0) {
-      canvasData += `**Course Modules (${courseContext.modules.length} total):**\n`;
+      canvasData += `Course Modules (${courseContext.modules.length} total):\n`;
       courseContext.modules.slice(0, 8).forEach((module, index) => {
         canvasData += `${index + 1}. ${module.name} (Position: ${module.position})\n`;
         if (module.items && module.items.length > 0) {
@@ -958,7 +989,7 @@ class ChatbotService {
 
     // Add files if available
     if (courseContext.files && courseContext.files.length > 0) {
-      canvasData += `**Recent Files (${courseContext.files.length} shown):**\n`;
+      canvasData += `Recent Files (${courseContext.files.length} shown):\n`;
       courseContext.files.slice(0, 5).forEach((file, index) => {
         canvasData += `${index + 1}. ${file.display_name || file.filename}\n`;
         if (file.updated_at) {
@@ -970,7 +1001,7 @@ class ChatbotService {
 
     // Add discussions if available
     if (courseContext.discussions && courseContext.discussions.length > 0) {
-      canvasData += `**Recent Discussions (${courseContext.discussions.length} shown):**\n`;
+      canvasData += `Recent Discussions (${courseContext.discussions.length} shown):\n`;
       courseContext.discussions.slice(0, 3).forEach((discussion, index) => {
         canvasData += `${index + 1}. ${discussion.title}\n`;
         if (discussion.posted_at) {
@@ -980,7 +1011,7 @@ class ChatbotService {
       });
     }
 
-    canvasData += '\n**Instructions:** Use this Canvas course data to provide accurate, helpful responses about the student\'s course. Reference specific assignments, modules, or deadlines when relevant to their question.';
+    canvasData += '\nInstructions: Use this Canvas course data to provide accurate, helpful responses about the student\'s course. Reference specific assignments, modules, or deadlines when relevant to their question.';
     
     return canvasData;
   }

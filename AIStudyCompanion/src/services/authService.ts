@@ -7,6 +7,7 @@ export interface UserAccount {
   canvasUrl: string;
   createdAt: string;
   lastLogin: string;
+  setupCompleted: boolean;
 }
 
 export interface AuthResult {
@@ -106,6 +107,7 @@ class AuthService {
         canvasUrl,
         createdAt: new Date().toISOString(),
         lastLogin: new Date().toISOString(),
+        setupCompleted: false,
       };
 
       // Store account metadata
@@ -205,6 +207,23 @@ class AuthService {
     return currentUser !== null;
   }
 
+  // Mark setup as completed for current user
+  async completeSetup(): Promise<boolean> {
+    try {
+      const currentUser = await this.getCurrentUser();
+      if (!currentUser) return false;
+
+      const accounts = await this.getStoredAccounts();
+      const updatedUser = { ...currentUser, setupCompleted: true };
+      accounts[currentUser.id] = updatedUser;
+      await this.storeAccounts(accounts);
+      return true;
+    } catch (error) {
+      console.error('Error completing setup:', error);
+      return false;
+    }
+  }
+
   // Get all usernames (for development/debugging)
   async getAllUsernames(): Promise<string[]> {
     const accounts = await this.getStoredAccounts();
@@ -278,6 +297,71 @@ class AuthService {
     } catch (error) {
       console.error('Error deleting account:', error);
       return false;
+    }
+  }
+
+  // Delete current user account and all associated data
+  async deleteCurrentAccount(): Promise<AuthResult> {
+    try {
+      const currentUser = await this.getCurrentUser();
+      if (!currentUser) {
+        return { success: false, error: 'No user is currently logged in' };
+      }
+
+      // Import storage services dynamically to avoid circular dependencies
+      const { default: flashcardStorage } = await import('./flashcardStorage');
+      const { default: canvasService } = await import('./canvasService');
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+
+      // Clear all flashcard and study data
+      await flashcardStorage.clearMemoryData();
+      await flashcardStorage.clearStudySessions();
+      
+      // Clear all flashcard sets
+      const flashcardSets = await flashcardStorage.getFlashcardSets();
+      for (const set of flashcardSets) {
+        await flashcardStorage.deleteFlashcardSet(set.id);
+      }
+
+      // Clear all flashcard sessions from AsyncStorage
+      const allKeys = await AsyncStorage.getAllKeys();
+      const flashcardKeys = allKeys.filter(key => key.startsWith('flashcards_'));
+      for (const key of flashcardKeys) {
+        await AsyncStorage.removeItem(key);
+      }
+
+      // Clear Canvas service data
+      await canvasService.clearCachedData();
+
+      // Clear custom instructions and other user preferences
+      const userDataKeys = allKeys.filter(key => 
+        key.includes('custom_instructions') || 
+        key.includes('study_history') ||
+        key.includes('user_preferences') ||
+        key.includes('courses') ||
+        key.includes('last_sync')
+      );
+      for (const key of userDataKeys) {
+        await AsyncStorage.removeItem(key);
+      }
+
+      // Delete user credentials and account data
+      await SecureStore.deleteItemAsync(this.getCanvasCredentialsKey(currentUser.id));
+      await SecureStore.deleteItemAsync(this.getPasswordKey(currentUser.id));
+      await SecureStore.deleteItemAsync(this.getSaltKey(currentUser.id));
+
+      // Remove user from accounts
+      const accounts = await this.getStoredAccounts();
+      delete accounts[currentUser.id];
+      await this.storeAccounts(accounts);
+
+      // Logout the user
+      await this.logout();
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting current account:', error);
+      return { success: false, error: 'Failed to delete account. Please try again.' };
     }
   }
 

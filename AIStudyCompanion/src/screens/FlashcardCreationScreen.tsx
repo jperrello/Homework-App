@@ -18,7 +18,7 @@ import { THEME } from '../constants';
 import canvasService from '../services/canvasService';
 import aiService from '../services/aiService';
 import flashcardStorage from '../services/flashcardStorage';
-import { CanvasCourse, CanvasAssignment, CanvasModule, CanvasFile } from '../types';
+import { CanvasCourse, CanvasAssignment, CanvasModule, CanvasFile, FlashcardSet } from '../types';
 
 export default function FlashcardCreationScreen() {
   const navigation = useNavigation<any>();
@@ -39,6 +39,13 @@ export default function FlashcardCreationScreen() {
   // Configuration
   const [additionalInfo, setAdditionalInfo] = useState('');
   const [flashcardCount, setFlashcardCount] = useState('10');
+  
+  // Flashcard Set Configuration
+  const [flashcardSetName, setFlashcardSetName] = useState('');
+  const [flashcardSetDescription, setFlashcardSetDescription] = useState('');
+  const [practiceFrequency, setPracticeFrequency] = useState<FlashcardSet['practice_frequency']>('weekly');
+  const [customFrequencyDays, setCustomFrequencyDays] = useState('7');
+  const [showFrequencyModal, setShowFrequencyModal] = useState(false);
   
   // Loading states
   const [isLoading, setIsLoading] = useState(false);
@@ -223,13 +230,47 @@ export default function FlashcardCreationScreen() {
       });
 
       if (response.success && response.data.length > 0) {
+        // Create flashcard set if name is provided
+        let flashcardSetId: string | undefined = undefined;
+        
+        if (flashcardSetName.trim()) {
+          const setId = flashcardStorage.generateFlashcardSetId();
+          const flashcardSet: FlashcardSet = {
+            id: setId,
+            name: flashcardSetName.trim(),
+            description: flashcardSetDescription.trim() || undefined,
+            course_id: selectedCourse!.id,
+            topic: selectedCourse!.name,
+            practice_frequency: practiceFrequency,
+            custom_frequency_days: practiceFrequency === 'custom' ? parseInt(customFrequencyDays) : undefined,
+            next_practice_date: flashcardStorage.calculateNextPracticeDate(practiceFrequency, practiceFrequency === 'custom' ? parseInt(customFrequencyDays) : undefined),
+            created_at: new Date(),
+            updated_at: new Date(),
+            flashcard_count: response.data.length,
+            is_active: true
+          };
+          
+          await flashcardStorage.saveFlashcardSet(flashcardSet);
+          flashcardSetId = setId;
+        }
+
+        // Update flashcards with set ID if applicable
+        const flashcardsWithSetId = response.data.map(card => ({
+          ...card,
+          flashcard_set_id: flashcardSetId
+        }));
+
         // Save flashcards to storage
         const sessionId = flashcardStorage.generateSessionId();
-        await flashcardStorage.saveFlashcards(sessionId, response.data);
+        await flashcardStorage.saveFlashcards(sessionId, flashcardsWithSetId);
         
+        const setMessage = flashcardSetName.trim() 
+          ? `\n\nFlashcard Set: "${flashcardSetName}"\nPractice Schedule: ${getPracticeFrequencyLabel(practiceFrequency, customFrequencyDays)}`
+          : '';
+          
         Alert.alert(
-          'Flashcards Generated!',
-          `Successfully generated ${response.data.length} flashcards for ${selectedCourse!.name}.`,
+          'Flashcards Generated! 🎉',
+          `Successfully generated ${response.data.length} flashcards for ${selectedCourse!.name}.${setMessage}\n\nWhat would you like to do next?`,
           [
             {
               text: 'Study Now',
@@ -243,9 +284,33 @@ export default function FlashcardCreationScreen() {
                 });
               },
             },
+            {
+              text: 'View in Study Queue',
+              onPress: () => {
+                // Navigate to study queue and refresh to show new cards
+                navigation.navigate('StudyQueue', {
+                  refresh: true,
+                  newCardsGenerated: true,
+                  newCardsCount: response.data.length,
+                  courseName: selectedCourse!.name
+                });
+              },
+            },
             { 
-              text: 'Back to Creator',
-              onPress: () => navigation.goBack()
+              text: 'Create More',
+              style: 'default',
+              onPress: () => {
+                // Reset form for creating more flashcards
+                setSelectedModules([]);
+                setSelectedAssignments([]);
+                setSelectedFiles([]);
+                setAdditionalInfo('');
+                setFlashcardCount('10');
+                setFlashcardSetName('');
+                setFlashcardSetDescription('');
+                setPracticeFrequency('weekly');
+                setCustomFrequencyDays('7');
+              }
             },
           ]
         );
@@ -261,6 +326,27 @@ export default function FlashcardCreationScreen() {
   };
 
   const canGenerate = selectedCourse && !isGenerating && !loadingContent;
+
+  const getPracticeFrequencyLabel = (frequency: FlashcardSet['practice_frequency'], customDays?: string): string => {
+    switch (frequency) {
+      case 'daily': return 'Daily';
+      case 'every_2_days': return 'Every 2 days';
+      case 'weekly': return 'Weekly';
+      case 'bi_weekly': return 'Bi-weekly';
+      case 'monthly': return 'Monthly';
+      case 'custom': return `Every ${customDays || 7} days`;
+      default: return 'Weekly';
+    }
+  };
+
+  const getFrequencyOptions = (): Array<{label: string, value: FlashcardSet['practice_frequency']}> => [
+    { label: 'Daily', value: 'daily' },
+    { label: 'Every 2 days', value: 'every_2_days' },
+    { label: 'Weekly', value: 'weekly' },
+    { label: 'Bi-weekly', value: 'bi_weekly' },
+    { label: 'Monthly', value: 'monthly' },
+    { label: 'Custom', value: 'custom' }
+  ];
 
   if (isLoading) {
     return (
@@ -429,6 +515,66 @@ export default function FlashcardCreationScreen() {
                     maxLength={2}
                   />
                 </View>
+
+                {/* Flashcard Set Configuration */}
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Flashcard Set (Optional)</Text>
+                  <Text style={styles.sectionDescription}>
+                    Create a named flashcard set with automated practice reminders
+                  </Text>
+                  
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Set Name</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={flashcardSetName}
+                      onChangeText={setFlashcardSetName}
+                      placeholder="e.g., Biology Chapter 5, Math Finals Review"
+                      multiline={false}
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Description (Optional)</Text>
+                    <TextInput
+                      style={[styles.textInput, { minHeight: 60 }]}
+                      value={flashcardSetDescription}
+                      onChangeText={setFlashcardSetDescription}
+                      placeholder="Brief description of what this set covers"
+                      multiline
+                      numberOfLines={2}
+                      textAlignVertical="top"
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Practice Frequency</Text>
+                    <TouchableOpacity 
+                      style={styles.selector}
+                      onPress={() => setShowFrequencyModal(true)}
+                    >
+                      <Text style={[styles.selectorText, { color: THEME.colors.text }]}>
+                        {getPracticeFrequencyLabel(practiceFrequency, customFrequencyDays)}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color={THEME.colors.textSecondary} />
+                    </TouchableOpacity>
+                    
+                    {practiceFrequency === 'custom' && (
+                      <View style={styles.customFrequencyRow}>
+                        <Text style={styles.customFrequencyLabel}>Practice every</Text>
+                        <TextInput
+                          style={[styles.numberInput, { width: 60 }]}
+                          value={customFrequencyDays}
+                          onChangeText={setCustomFrequencyDays}
+                          placeholder="7"
+                          keyboardType="numeric"
+                          maxLength={2}
+                        />
+                        <Text style={styles.customFrequencyLabel}>days</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
               </>
             )}
 
@@ -494,6 +640,51 @@ export default function FlashcardCreationScreen() {
                 </Text>
               </View>
             )}
+          />
+        </SafeAreaView>
+      </Modal>
+
+      {/* Frequency Selection Modal */}
+      <Modal
+        visible={showFrequencyModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowFrequencyModal(false)}>
+              <Text style={styles.modalCancel}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Practice Frequency</Text>
+            <View style={styles.modalSpacer} />
+          </View>
+          
+          <FlatList
+            data={getFrequencyOptions()}
+            keyExtractor={(item) => item.value}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[
+                  styles.frequencyItem,
+                  practiceFrequency === item.value && styles.selectedFrequencyItem
+                ]}
+                onPress={() => {
+                  setPracticeFrequency(item.value);
+                  setShowFrequencyModal(false);
+                }}
+              >
+                <Text style={[
+                  styles.frequencyItemTitle,
+                  practiceFrequency === item.value && styles.selectedFrequencyItemText
+                ]}>
+                  {item.label}
+                </Text>
+                {practiceFrequency === item.value && (
+                  <Ionicons name="checkmark" size={20} color={THEME.colors.primary} />
+                )}
+              </TouchableOpacity>
+            )}
+            style={styles.frequencyList}
           />
         </SafeAreaView>
       </Modal>
@@ -720,5 +911,50 @@ const styles = StyleSheet.create({
     color: THEME.colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  inputGroup: {
+    marginBottom: THEME.spacing.md,
+  },
+  inputLabel: {
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '600',
+    color: THEME.colors.text,
+    marginBottom: THEME.spacing.xs,
+  },
+  customFrequencyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: THEME.spacing.sm,
+    gap: THEME.spacing.sm,
+  },
+  customFrequencyLabel: {
+    fontSize: THEME.fontSize.md,
+    color: THEME.colors.text,
+  },
+  frequencyList: {
+    flex: 1,
+  },
+  frequencyItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: THEME.colors.surface,
+    padding: THEME.spacing.lg,
+    marginHorizontal: THEME.spacing.lg,
+    marginVertical: THEME.spacing.xs,
+    borderRadius: THEME.borderRadius.lg,
+  },
+  selectedFrequencyItem: {
+    backgroundColor: THEME.colors.primary + '20',
+    borderWidth: 1,
+    borderColor: THEME.colors.primary,
+  },
+  frequencyItemTitle: {
+    fontSize: THEME.fontSize.md,
+    fontWeight: '600',
+    color: THEME.colors.text,
+  },
+  selectedFrequencyItemText: {
+    color: THEME.colors.primary,
   },
 });

@@ -4,7 +4,8 @@
       "Bash(npx expo start:*)",
       "Bash(npm run clean:*)",
       "Bash(node:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Read(C:\\Users\\jperr\\Documents\\GitHub\\Claude Code/**)"
     ],
     "deny": [],
     "ask": []

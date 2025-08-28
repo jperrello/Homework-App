@@ -11,6 +11,7 @@ import { useAuth } from '../contexts/AuthContext';
 import WelcomeScreen from '../screens/WelcomeScreen';
 import CanvasAuthScreen from '../screens/CanvasAuthScreen';
 import CreateAccountScreen from '../screens/CreateAccountScreen';
+import AccountSetupScreen from '../screens/AccountSetupScreen';
 import LoginScreen from '../screens/LoginScreen';
 import StudyQueueScreen from '../screens/StudyQueueScreen';
 import ContentCreatorScreen from '../screens/ContentCreatorScreen';
@@ -40,6 +41,7 @@ export type RootStackParamList = {
       avatar_url?: string;
     };
   };
+  [ROUTES.ACCOUNT_SETUP]: undefined;
   MainApp: undefined;
 };
 
@@ -253,7 +255,7 @@ function MainAppNavigator() {
 
 // Authentication Navigator Component
 function AuthNavigator() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, needsSetup, isLoading } = useAuth();
 
   // Show loading screen while checking auth status
   if (isLoading) {
@@ -273,17 +275,24 @@ function AuthNavigator() {
         headerShown: false,
       }}
     >
-      {!isAuthenticated ? (
-        // Authentication screens - Always start with Welcome screen
+      {isAuthenticated ? (
+        // Main app screens - user is fully authenticated and setup is complete
+        <RootStack.Screen name="MainApp" component={MainAppNavigator} />
+      ) : needsSetup ? (
+        // Setup screens - user has an account but needs to complete setup
+        <>
+          <RootStack.Screen name={ROUTES.ACCOUNT_SETUP} component={AccountSetupScreen} />
+          <RootStack.Screen name={ROUTES.CREATE_ACCOUNT} component={CreateAccountScreen} />
+        </>
+      ) : (
+        // Authentication screens - no account or not logged in
         <>
           <RootStack.Screen name={ROUTES.WELCOME} component={WelcomeScreen} />
           <RootStack.Screen name={ROUTES.LOGIN} component={LoginScreen} />
           <RootStack.Screen name={ROUTES.CANVAS_AUTH} component={CanvasAuthScreen} />
           <RootStack.Screen name={ROUTES.CREATE_ACCOUNT} component={CreateAccountScreen} />
+          <RootStack.Screen name={ROUTES.ACCOUNT_SETUP} component={AccountSetupScreen} />
         </>
-      ) : (
-        // Main app screens
-        <RootStack.Screen name="MainApp" component={MainAppNavigator} />
       )}
     </RootStack.Navigator>
   );

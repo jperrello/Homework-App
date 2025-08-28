@@ -7,10 +7,24 @@ import {
   CustomInstructions,
   ReflectionPrompt,
   ChatMessage,
-  APIResponse 
+  APIResponse,
+  UserPreferences
 } from '../types';
 import { CONTENT_GENERATION, DEFAULT_CUSTOM_INSTRUCTIONS } from '../constants';
 import aiConfig, { AIProvider } from '../utils/aiConfig';
+import userPreferencesService from './userPreferencesService';
+
+// New interfaces for enhanced functionality
+interface HomeworkSolutionOptions extends AIGenerationRequest {
+  assignmentName: string;
+  dueDate?: string;
+  points?: number;
+}
+
+interface ReflectiveQuestionsOptions extends AIGenerationRequest {
+  className: string;
+  assignmentType?: string;
+}
 
 interface AIGenerationRequest {
   content: string;
@@ -45,6 +59,85 @@ class AIService {
     if (!validation.isValid) {
       console.warn('AI Service configuration issues:', validation.errors);
     }
+  }
+
+  // Load user preferences from storage
+  private async getUserPreferences(): Promise<UserPreferences | null> {
+    try {
+      // Get both custom instructions and study preferences
+      const [customInstructions, studyPreferences] = await Promise.all([
+        userPreferencesService.getCustomInstructions(),
+        userPreferencesService.getStudyPreferences()
+      ]);
+
+      // Convert our new preference format to the legacy UserPreferences interface
+      return {
+        favorite_subjects: [],
+        difficult_subjects: [],
+        preferred_learning_style: customInstructions.learning_style,
+        study_goals: [],
+        preferred_study_times: studyPreferences.preferred_study_times,
+        optimal_study_duration: studyPreferences.session_length_minutes,
+        hobbies: [],
+        career_goals: [],
+        content_format_preference: [customInstructions.format_preference.replace('_', ' ')],
+        explanation_style: customInstructions.tone,
+        difficulty_preference: customInstructions.difficulty_preference
+      };
+    } catch (error) {
+      console.error('Error loading user preferences:', error);
+      return null;
+    }
+  }
+
+  // Build user context prompt from preferences
+  private buildUserContextPrompt(preferences: UserPreferences): string {
+    let context = '\n## Student Profile and Learning Preferences\n\n';
+    
+    // Academic preferences
+    if (preferences.favorite_subjects && preferences.favorite_subjects.length > 0) {
+      context += `Student's favorite subjects: ${preferences.favorite_subjects.join(', ')}\n`;
+    }
+    if (preferences.difficult_subjects && preferences.difficult_subjects.length > 0) {
+      context += `Student finds these subjects challenging: ${preferences.difficult_subjects.join(', ')}\n`;
+    }
+    if (preferences.preferred_learning_style) {
+      context += `Preferred learning style: ${preferences.preferred_learning_style.replace('_', ' ')}\n`;
+    }
+    if (preferences.study_goals && preferences.study_goals.length > 0) {
+      context += `Study goals: ${preferences.study_goals.join(', ')}\n`;
+    }
+    
+    // Study schedule and habits
+    if (preferences.preferred_study_times && preferences.preferred_study_times.length > 0) {
+      context += `Prefers to study during: ${preferences.preferred_study_times.join(', ')}\n`;
+    }
+    if (preferences.optimal_study_duration) {
+      context += `Optimal study session length: ${preferences.optimal_study_duration} minutes\n`;
+    }
+    
+    // Personal context
+    if (preferences.hobbies && preferences.hobbies.length > 0) {
+      context += `Hobbies and interests: ${preferences.hobbies.join(', ')}\n`;
+    }
+    if (preferences.career_goals && preferences.career_goals.length > 0) {
+      context += `Career goals: ${preferences.career_goals.join(', ')}\n`;
+    }
+    
+    // Learning preferences  
+    if (preferences.content_format_preference && preferences.content_format_preference.length > 0) {
+      context += `Preferred content formats: ${preferences.content_format_preference.join(', ')}\n`;
+    }
+    if (preferences.explanation_style) {
+      context += `Explanation style preference: ${preferences.explanation_style}\n`;
+    }
+    if (preferences.difficulty_preference) {
+      context += `Difficulty preference: ${preferences.difficulty_preference}\n`;
+    }
+    
+    context += '\nUse this information to personalize your response style, relate content to their interests, and adapt to their learning preferences. Make connections between course material and their hobbies, career goals, and interests when relevant. Adjust your teaching approach based on their learning style and difficulty preferences.\n\n';
+    
+    return context;
   }
 
   getProvider(): AIProvider {
@@ -252,11 +345,19 @@ class AIService {
 
   // Flashcard Generation
   async generateFlashcards(options: FlashcardGenerationOptions): Promise<APIResponse<Flashcard[]>> {
+    // Get current user preferences
+    const customInstructions = await userPreferencesService.getCustomInstructions();
+    const studyPreferences = await userPreferencesService.getStudyPreferences();
+    
     const customPrompt = options.customInstructions ? 
       this.buildCustomInstructionsPrompt(options.customInstructions) : 
-      this.buildCustomInstructionsPrompt(DEFAULT_CUSTOM_INSTRUCTIONS);
+      userPreferencesService.generateAIPromptFromInstructions(customInstructions);
 
-    const systemPrompt = `You are an expert educational content creator specializing in creating effective flashcards for student learning. ${customPrompt}
+    // Get user preferences for personalization
+    const userPreferences = await this.getUserPreferences();
+    const userContextPrompt = userPreferences ? this.buildUserContextPrompt(userPreferences) : '';
+
+    const systemPrompt = `You are an expert educational content creator specializing in creating effective flashcards for student learning. ${customPrompt}${userContextPrompt}
 
 Create flashcards that follow these principles:
 - Questions should test understanding, not just memorization
@@ -264,6 +365,8 @@ Create flashcards that follow these principles:
 - Include the source concept or topic for context
 - Vary difficulty appropriately
 - Focus on key concepts, definitions, and important facts
+${userPreferences ? `- When possible, relate concepts to the student's interests (${userPreferences.hobbies?.join(', ') || ''}) and career goals (${userPreferences.career_goals?.join(', ') || ''})` : ''}
+${userPreferences?.difficulty_preference ? `- Adjust difficulty based on student's preference: ${userPreferences.difficulty_preference}` : ''}
 
 Return your response as a JSON array of flashcard objects with this structure:
 {
@@ -333,7 +436,11 @@ Focus on the most important concepts and ensure variety in question types.`;
       this.buildCustomInstructionsPrompt(options.customInstructions) : 
       this.buildCustomInstructionsPrompt(DEFAULT_CUSTOM_INSTRUCTIONS);
 
-    const systemPrompt = `You are an expert educational assessment creator. ${customPrompt}
+    // Get user preferences for personalization
+    const userPreferences = await this.getUserPreferences();
+    const userContextPrompt = userPreferences ? this.buildUserContextPrompt(userPreferences) : '';
+
+    const systemPrompt = `You are an expert educational assessment creator. ${customPrompt}${userContextPrompt}
 
 Create engaging quiz questions that test comprehension and application of knowledge. Follow these guidelines:
 - Multiple choice questions should have 4 options with only one correct answer
@@ -341,6 +448,8 @@ Create engaging quiz questions that test comprehension and application of knowle
 - Short answer questions should require brief but thoughtful responses
 - Include explanations for correct answers
 - Vary question difficulty and types
+${userPreferences ? `- When possible, use examples or scenarios that relate to the student's interests (${userPreferences.hobbies?.join(', ') || ''}) or career goals (${userPreferences.career_goals?.join(', ') || ''})` : ''}
+${userPreferences?.difficulty_preference ? `- Adjust overall difficulty to match student's preference: ${userPreferences.difficulty_preference}` : ''}
 
 Return your response as a JSON object with this structure:
 {
@@ -420,7 +529,11 @@ Make sure questions test understanding and application, not just recall.`;
       this.buildCustomInstructionsPrompt(options.customInstructions) : 
       this.buildCustomInstructionsPrompt(DEFAULT_CUSTOM_INSTRUCTIONS);
 
-    const systemPrompt = `You are an expert at creating clear, comprehensive study summaries. ${customPrompt}
+    // Get user preferences for personalization
+    const userPreferences = await this.getUserPreferences();
+    const userContextPrompt = userPreferences ? this.buildUserContextPrompt(userPreferences) : '';
+
+    const systemPrompt = `You are an expert at creating clear, comprehensive study summaries. ${customPrompt}${userContextPrompt}
 
 Create summaries that:
 - Identify and highlight key concepts and main points
@@ -429,6 +542,9 @@ Create summaries that:
 - Include important definitions and explanations
 - Connect related concepts
 - Are concise but comprehensive
+${userPreferences ? `- When appropriate, include analogies or examples that relate to the student's interests (${userPreferences.hobbies?.join(', ') || ''}) to help explain complex concepts` : ''}
+${userPreferences ? `- Consider how the material might apply to their career goals (${userPreferences.career_goals?.join(', ') || ''})` : ''}
+${userPreferences?.explanation_style ? `- Format explanations in their preferred style: ${userPreferences.explanation_style}` : ''}
 
 Return a JSON object with this structure:
 {
@@ -564,7 +680,11 @@ Include a variety of prompt types that encourage different kinds of thinking.`;
       this.buildCustomInstructionsPrompt(context.customInstructions) : 
       this.buildCustomInstructionsPrompt(DEFAULT_CUSTOM_INSTRUCTIONS);
 
-    const systemPrompt = `You are an AI study coach who helps students learn effectively. ${customPrompt}
+    // Get user preferences for personalization
+    const userPreferences = await this.getUserPreferences();
+    const userContextPrompt = userPreferences ? this.buildUserContextPrompt(userPreferences) : '';
+
+    const systemPrompt = `You are an AI study coach who helps students learn effectively. ${customPrompt}${userContextPrompt}
 
 Your role is to:
 - Ask thought-provoking questions that encourage deeper thinking
@@ -574,6 +694,9 @@ Your role is to:
 - Connect concepts to real-world applications
 - Suggest effective study strategies
 - Use Canvas course data when available to provide specific, relevant guidance
+${userPreferences ? `- Use analogies and examples from their interests (${userPreferences.hobbies?.join(', ') || ''}) to explain concepts when appropriate` : ''}
+${userPreferences ? `- Consider their career goals (${userPreferences.career_goals?.join(', ') || ''}) when suggesting applications of concepts` : ''}
+${userPreferences?.explanation_style ? `- Adapt explanations to their preferred style: ${userPreferences.explanation_style}` : ''}
 
 When you have access to Canvas course data, reference specific assignments, deadlines, modules, and course materials to give personalized advice.
 
@@ -598,6 +721,197 @@ Respond as a helpful study coach. When Canvas course data is available, use it t
 
     const model = aiConfig.getModelForTask('chat');
     return this.callLLM(systemPrompt, userPrompt, model, 0.8); // Slightly higher temperature for more conversational responses
+  }
+
+  // Homework/Assignment Solution Generation (adapted from auto_student.py)
+  async generateHomeworkSolution(options: HomeworkSolutionOptions): Promise<APIResponse<string>> {
+    // Use the academic homework solving system prompt from auto_student.py
+    const systemPrompt = `You are a helpful assistant that completes university homework concisely and accurately, adhering to specified formats like MLA.`;
+
+    const courseContext = options.courseContext ? 
+      `Course: ${options.courseContext.courseName}${options.courseContext.topic ? `, Topic: ${options.courseContext.topic}` : ''}` : '';
+
+    // Build the comprehensive prompt similar to auto_student.py structure
+    const userPrompt = `You are an expert academic assistant. Your task is to provide a comprehensive solution for the following university-level assignment.
+Please analyze the assignment description and any supplementary content (files, transcripts) carefully and generate a complete response.
+Only provide the answer to the question in an appropriate format. That means a proper MLA essay format for a question that wants an essay response, simple python code if the result is for a python notebook, or others as appropriate to the assignment's requirements. Do not restate my question or offer a follow up question.
+
+--- ASSIGNMENT DETAILS ---
+Assignment Name: ${options.assignmentName}
+${options.dueDate ? `Due Date: ${options.dueDate}` : ''}
+${options.points ? `Points: ${options.points}` : ''}
+${courseContext}
+--- END OF ASSIGNMENT DETAILS ---
+
+--- ASSIGNMENT CONTENT ---
+${options.content}
+--- END OF ASSIGNMENT CONTENT ---
+
+Please provide your solution below:`;
+
+    const model = aiConfig.getModelForTask('summary'); // Use summary model for academic work
+    return this.callLLM(systemPrompt, userPrompt, model, 0.3); // Lower temperature for more consistent academic responses
+  }
+
+  // Generate Reflective Questions (adapted from auto_student.py)
+  async generateReflectiveQuestions(options: ReflectiveQuestionsOptions): Promise<APIResponse<string[]>> {
+    const systemPrompt = `You are an AI assistant specialized in educational psychology and ethical reflection.
+Your task is to generate a series of reflective questions for a student who is considering using an
+LLM (Large Language Model) or similar tool to complete a specific academic assignment.
+The goal of these questions is to prompt the student to pause, think critically about their decision,
+and consider the implications of using the tool versus completing the assignment themselves. The
+questions are intended to be a 'speed bump' before accessing the cheating functionality.
+The questions should be rooted in scientific and psychological principles, including:
+- Consequences analysis (examining potential short-term benefits vs. long-term costs, risks, missed opportunities)
+- Values clarification (connecting the action to personal values like integrity, learning, growth)
+- Motivational Interviewing techniques (exploring ambivalence, reasons for considering the tool, and reasons for doing the work authentically)
+- Cognitive Behavioral Therapy principles (considering thoughts and feelings associated with the decision and its outcomes)
+- Principles of learning and skill development (what the assignment is *meant* to teach, what is lost by bypassing it)
+Make the questions as relevant and specific as possible to the learning objectives and content of the assignment.
+Output JSON format: {"questions": ["Q1", "Q2", ...]}`;
+
+    const userPrompt = `Generate between 5 and 8 distinct questions to present to a student who is considering using an LLM to
+solve the following homework assignment. The tone of the questions should be neutral and reflective,
+not accusatory or preachy. Ensure questions are concise enough to be easily read on a web or mobile interface.
+
+- CLASS: ${options.className}
+- ASSIGNMENT TYPE: ${options.assignmentType || 'General Assignment'}
+- DESCRIPTION: ${options.content}
+
+Questions should:
+- Be open-ended and thought-provoking
+- Focus on learning consequences, ethics, and personal growth
+- Avoid accusatory language
+- Be concise (max 15 words each)
+
+Just to reiterate, the only output should be in JSON format: {"questions": ["Q1", "Q2", ...]}`;
+
+    const model = aiConfig.getModelForTask('summary');
+    const response = await this.callLLM(systemPrompt, userPrompt, model, 0.3);
+
+    if (!response.success) {
+      return {
+        success: false,
+        error: response.error,
+        data: []
+      };
+    }
+
+    try {
+      // Parse JSON response and extract questions
+      const cleanedResponse = this.removeThinkTags(response.data);
+      const parsedResponse = JSON.parse(cleanedResponse);
+      const questions = parsedResponse.questions || [];
+
+      if (!Array.isArray(questions) || questions.length === 0) {
+        return {
+          success: false,
+          error: 'No valid questions found in response',
+          data: ['What did you learn from this experience?'] // Fallback question
+        };
+      }
+
+      return {
+        success: true,
+        data: questions
+      };
+
+    } catch (error) {
+      console.error('Error parsing reflective questions:', error);
+      return {
+        success: false,
+        error: 'Failed to parse reflective questions',
+        data: ['What did you learn from this experience?'] // Fallback question
+      };
+    }
+  }
+
+  // Summarize text with academic focus (adapted from auto_student.py _summarize_text)
+  async summarizeAcademicContent(
+    text: string, 
+    maxWords: number = 500,
+    courseContext?: { courseName: string; topic?: string }
+  ): Promise<APIResponse<string>> {
+    if (!text || !text.trim()) {
+      return {
+        success: false,
+        error: 'No content to summarize',
+        data: '[No content to summarize]'
+      };
+    }
+
+    const wordCount = text.split(' ').length;
+    if (wordCount <= maxWords) {
+      return {
+        success: true,
+        data: text
+      };
+    }
+
+    const systemPrompt = 'You are a helpful assistant that summarizes academic materials concisely and accurately.';
+    
+    const courseInfo = courseContext ? 
+      `Course: ${courseContext.courseName}${courseContext.topic ? `, Topic: ${courseContext.topic}` : ''}\n` : '';
+
+    const userPrompt = `${courseInfo}Please summarize the following text in no more than ${maxWords} words, focusing on key points relevant to an academic assignment. Only provide me the summary as a block of text, I do not want you to repeat your task or ask me any follow up questions:
+
+${text.substring(0, 10000)}`;
+
+    const model = aiConfig.getModelForTask('summary');
+    const response = await this.callLLM(systemPrompt, userPrompt, model, 0.3);
+
+    if (!response.success) {
+      // Fallback: truncate to word limit
+      const words = text.split(' ');
+      const truncated = words.slice(0, maxWords).join(' ') + 
+                      (words.length > maxWords ? '... [truncated due to summarization error]' : '');
+      return {
+        success: true,
+        data: truncated
+      };
+    }
+
+    const summary = response.data.trim();
+    if (!summary) {
+      return {
+        success: false,
+        error: 'Empty summary returned',
+        data: `[Empty summary returned for content of length ${text.length}]`
+      };
+    }
+
+    return {
+      success: true,
+      data: summary
+    };
+  }
+
+  // Helper function to remove think tags from AI responses (from auto_student.py)
+  private removeThinkTags(responseText: string): string {
+    // Pattern to match <think> tags and their content
+    const thinkPattern = /<think>.*?<\/think>/gs;
+    
+    // Remove all think tags
+    let cleaned = responseText.replace(thinkPattern, '');
+    
+    // Find the first valid JSON object in the response
+    const jsonCandidates = cleaned.match(/\{.*\}/gs);
+    
+    if (jsonCandidates) {
+      // Try parsing each candidate from longest to shortest
+      const sortedCandidates = jsonCandidates.sort((a, b) => b.length - a.length);
+      for (const candidate of sortedCandidates) {
+        try {
+          JSON.parse(candidate);
+          return candidate;
+        } catch (error) {
+          continue;
+        }
+      }
+    }
+    
+    // Fallback: return cleaned text
+    return cleaned.trim();
   }
 }
 

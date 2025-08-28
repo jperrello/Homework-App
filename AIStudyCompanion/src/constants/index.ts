@@ -118,6 +118,7 @@ export const ROUTES = {
   LOGIN: 'Login',
   CANVAS_AUTH: 'CanvasAuth',
   CREATE_ACCOUNT: 'CreateAccount',
+  ACCOUNT_SETUP: 'AccountSetup',
   ENHANCED_CANVAS_AUTH: 'EnhancedCanvasAuth',
   
   // Main App Tabs

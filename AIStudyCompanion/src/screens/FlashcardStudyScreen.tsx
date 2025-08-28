@@ -15,6 +15,11 @@ import { StudyStackParamList } from '../navigation/AppNavigator';
 import { Flashcard } from '../types';
 import { THEME, SPACED_REPETITION } from '../constants';
 import flashcardStorage from '../services/flashcardStorage';
+import spacedRepetitionService, { 
+  FlashcardMemoryData, 
+  StudyResult, 
+  StudySession 
+} from '../services/spacedRepetitionService';
 
 type FlashcardStudyScreenRouteProp = RouteProp<StudyStackParamList, 'FlashcardStudy'>;
 
@@ -28,11 +33,57 @@ export default function FlashcardStudyScreen() {
   const [isFlipped, setIsFlipped] = useState(false);
   const [studiedCount, setStudiedCount] = useState(0);
   const [sessionComplete, setSessionComplete] = useState(false);
+  const [memoryData, setMemoryData] = useState<FlashcardMemoryData[]>([]);
+  const [studySession, setStudySession] = useState<StudySession | null>(null);
+  const [sessionStartTime] = useState(new Date());
+  const [cardStartTime, setCardStartTime] = useState<Date>(new Date());
+  const [studyStats, setStudyStats] = useState({ dueToday: 0, newCards: 0, totalCards: 0 });
 
-  // Mock data for demonstration - in real app, this would load from storage/API
   useEffect(() => {
     loadFlashcards();
+    initializeStudySession();
   }, [flashcardIds]);
+
+  const initializeStudySession = async () => {
+    try {
+      // Load memory data for spaced repetition
+      const savedMemoryData = await flashcardStorage.getMemoryData();
+      setMemoryData(savedMemoryData);
+      
+      // Calculate study stats
+      const stats = spacedRepetitionService.getStudyStats(savedMemoryData);
+      setStudyStats(stats);
+      
+      // Create new study session
+      const sessionData = spacedRepetitionService.createStudySession(
+        flashcardIds || [],
+        savedMemoryData,
+        {
+          maxCards: 20,
+          newCardLimit: 5,
+          reviewCardLimit: 15,
+          includeNewCards: true
+        }
+      );
+      
+      const newSession: StudySession = {
+        sessionId: sessionData.sessionId,
+        startTime: sessionStartTime,
+        cardsStudied: [],
+        results: [],
+        totalCards: sessionData.sessionCards.length,
+        correctCards: 0
+      };
+      
+      setStudySession(newSession);
+      
+      // Update flashcard IDs to match spaced repetition selection
+      // This would normally update the flashcards state with the selected cards
+      
+    } catch (error) {
+      console.error('Error initializing study session:', error);
+    }
+  };
 
   const loadFlashcards = async () => {
     try {
@@ -104,31 +155,77 @@ export default function FlashcardStudyScreen() {
     // Light haptic feedback on flip
     Vibration.vibrate(50);
     setIsFlipped(true);
+    // Record when user reveals answer for response time calculation
+    setCardStartTime(new Date());
   };
 
-  const handleQualityRating = (quality: number) => {
-    setStudiedCount(prev => prev + 1);
+  const handleQualityRating = async (quality: number) => {
+    if (!currentCard || !studySession) return;
     
-    // In a real app, you would update spaced repetition data here
-    updateSpacedRepetition(currentCard, quality);
+    const responseTime = new Date().getTime() - cardStartTime.getTime();
+    
+    // Create study result
+    const result: StudyResult = {
+      cardId: currentCard.id,
+      quality,
+      responseTime,
+      studiedAt: new Date()
+    };
+    
+    // Update spaced repetition memory data
+    const updatedMemoryData = spacedRepetitionService.processStudyResult(result, memoryData);
+    setMemoryData(updatedMemoryData);
+    
+    // Save updated memory data
+    await flashcardStorage.saveMemoryData(updatedMemoryData);
+    
+    // Update study session
+    const updatedSession = {
+      ...studySession,
+      cardsStudied: [...studySession.cardsStudied, currentCard.id],
+      results: [...studySession.results, result],
+      correctCards: quality >= 3 ? studySession.correctCards + 1 : studySession.correctCards
+    };
+    setStudySession(updatedSession);
+    
+    // Update studied count
+    setStudiedCount(prev => prev + 1);
     
     // Move to next card
     nextCard();
   };
 
-  const updateSpacedRepetition = (flashcard: Flashcard, quality: number) => {
-    // Implementation of SM-2 spaced repetition algorithm would go here
-    console.log(`Updated flashcard ${flashcard.id} with quality ${quality}`);
-  };
-
   const nextCard = () => {
     if (currentIndex >= flashcards.length - 1) {
-      setSessionComplete(true);
+      completeSession();
       return;
     }
     
     setCurrentIndex(prev => prev + 1);
     resetCard();
+  };
+  
+  const completeSession = async () => {
+    if (!studySession) return;
+    
+    const endTime = new Date();
+    const sessionDuration = endTime.getTime() - sessionStartTime.getTime();
+    const averageResponseTime = studySession.results.length > 0 
+      ? studySession.results.reduce((sum, r) => sum + (r.responseTime || 0), 0) / studySession.results.length
+      : 0;
+    
+    const completedSession = {
+      ...studySession,
+      endTime,
+      sessionDuration,
+      averageResponseTime
+    };
+    
+    // Save session data
+    await flashcardStorage.saveStudySession(completedSession);
+    
+    setStudySession(completedSession);
+    setSessionComplete(true);
   };
 
   const resetCard = () => {
@@ -140,6 +237,8 @@ export default function FlashcardStudyScreen() {
     setStudiedCount(0);
     setSessionComplete(false);
     resetCard();
+    // Re-initialize study session
+    initializeStudySession();
   };
 
   const goBack = () => {
@@ -151,6 +250,34 @@ export default function FlashcardStudyScreen() {
         { text: 'End Session', onPress: () => navigation.goBack() },
       ]
     );
+  };
+
+  // Helper functions for spaced repetition UI
+  const getCardMemoryInfo = (cardId?: string) => {
+    if (!cardId) return null;
+    return memoryData.find(m => m.cardId === cardId);
+  };
+  
+  const getNextReviewText = (cardId?: string) => {
+    const memory = getCardMemoryInfo(cardId);
+    if (!memory) return 'New card';
+    
+    const days = Math.ceil((memory.nextReviewDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+    if (days <= 0) return 'Due now';
+    if (days === 1) return 'Due tomorrow';
+    return `Due in ${days} days`;
+  };
+  
+  const getNextIntervalText = (quality: number) => {
+    if (!currentCard) return '';
+    const memory = getCardMemoryInfo(currentCard.id) || spacedRepetitionService.initializeCardMemory(currentCard.id);
+    const simulatedUpdate = spacedRepetitionService.calculateNextReview(memory, quality);
+    const days = simulatedUpdate.interval;
+    
+    if (days === 1) return '1d';
+    if (days < 30) return `${days}d`;
+    if (days < 365) return `${Math.round(days / 30)}mo`;
+    return `${Math.round(days / 365)}y`;
   };
 
   const currentCard = flashcards[currentIndex];
@@ -188,7 +315,13 @@ export default function FlashcardStudyScreen() {
           </Text>
           <View style={styles.completionStats}>
             <Text style={styles.statText}>Cards reviewed: {studiedCount}</Text>
-            <Text style={styles.statText}>Time spent: Great job!</Text>
+            <Text style={styles.statText}>Correct: {studySession?.correctCards || 0}</Text>
+            <Text style={styles.statText}>Accuracy: {studiedCount > 0 ? Math.round(((studySession?.correctCards || 0) / studiedCount) * 100) : 0}%</Text>
+            {studySession?.sessionDuration && (
+              <Text style={styles.statText}>
+                Time: {Math.round(studySession.sessionDuration / 60000)} minutes
+              </Text>
+            )}
           </View>
           <View style={styles.completionButtons}>
             <Button
@@ -223,6 +356,9 @@ export default function FlashcardStudyScreen() {
           <Text style={styles.headerSubtitle}>
             Card {currentIndex + 1} of {flashcards.length}
           </Text>
+          <Text style={styles.studyStats}>
+            Due Today: {studyStats.dueToday} • New: {studyStats.newCards}
+          </Text>
         </View>
         <View style={styles.backIcon} />
       </View>
@@ -252,18 +388,25 @@ export default function FlashcardStudyScreen() {
             <View style={[styles.flashcard, styles.questionCard]}>
               <View style={styles.cardHeader}>
                 <Text style={styles.cardType}>Question</Text>
-                <View style={[styles.difficultyBadge, {
-                  backgroundColor: currentCard?.difficulty === 'easy' ? THEME.colors.success + '20' :
-                                   currentCard?.difficulty === 'medium' ? THEME.colors.warning + '20' :
-                                   THEME.colors.error + '20'
-                }]}>
-                  <Text style={[styles.difficultyText, { 
-                    color: currentCard?.difficulty === 'easy' ? THEME.colors.success :
-                           currentCard?.difficulty === 'medium' ? THEME.colors.warning :
-                           THEME.colors.error 
+                <View style={styles.cardInfoContainer}>
+                  <View style={[styles.difficultyBadge, {
+                    backgroundColor: currentCard?.difficulty === 'easy' ? THEME.colors.success + '20' :
+                                     currentCard?.difficulty === 'medium' ? THEME.colors.warning + '20' :
+                                     THEME.colors.error + '20'
                   }]}>
-                    {currentCard?.difficulty?.toUpperCase()}
-                  </Text>
+                    <Text style={[styles.difficultyText, { 
+                      color: currentCard?.difficulty === 'easy' ? THEME.colors.success :
+                             currentCard?.difficulty === 'medium' ? THEME.colors.warning :
+                             THEME.colors.error 
+                    }]}>
+                      {currentCard?.difficulty?.toUpperCase()}
+                    </Text>
+                  </View>
+                  {getCardMemoryInfo(currentCard?.id) && (
+                    <Text style={styles.memoryInfo}>
+                      {getNextReviewText(currentCard?.id)}
+                    </Text>
+                  )}
                 </View>
               </View>
               
@@ -307,7 +450,8 @@ export default function FlashcardStudyScreen() {
               onPress={() => handleQualityRating(SPACED_REPETITION.QUALITY_RATINGS.INCORRECT)}
             >
               <Ionicons name="close" size={24} color="white" />
-              <Text style={styles.ratingButtonText}>Hard</Text>
+              <Text style={styles.ratingButtonText}>Again</Text>
+              <Text style={styles.ratingButtonSubtext}>&lt;1d</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
@@ -315,7 +459,17 @@ export default function FlashcardStudyScreen() {
               onPress={() => handleQualityRating(SPACED_REPETITION.QUALITY_RATINGS.CORRECT_HESITANT)}
             >
               <Ionicons name="remove" size={24} color="white" />
+              <Text style={styles.ratingButtonText}>Hard</Text>
+              <Text style={styles.ratingButtonSubtext}>{getNextIntervalText(SPACED_REPETITION.QUALITY_RATINGS.CORRECT_HESITANT)}</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.ratingButton, styles.ratingButtonGood]}
+              onPress={() => handleQualityRating(SPACED_REPETITION.QUALITY_RATINGS.CORRECT_HARD)}
+            >
+              <Ionicons name="checkmark-outline" size={24} color="white" />
               <Text style={styles.ratingButtonText}>Good</Text>
+              <Text style={styles.ratingButtonSubtext}>{getNextIntervalText(SPACED_REPETITION.QUALITY_RATINGS.CORRECT_HARD)}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
@@ -324,6 +478,7 @@ export default function FlashcardStudyScreen() {
             >
               <Ionicons name="checkmark" size={24} color="white" />
               <Text style={styles.ratingButtonText}>Easy</Text>
+              <Text style={styles.ratingButtonSubtext}>{getNextIntervalText(SPACED_REPETITION.QUALITY_RATINGS.CORRECT_EASY)}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -362,6 +517,11 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: THEME.fontSize.sm,
     color: THEME.colors.textSecondary,
+    marginTop: 2,
+  },
+  studyStats: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.primary,
     marginTop: 2,
   },
   progressContainer: {
@@ -438,6 +598,16 @@ const styles = StyleSheet.create({
     fontSize: THEME.fontSize.xs,
     fontWeight: 'bold',
   },
+  cardInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: THEME.spacing.sm,
+  },
+  memoryInfo: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    fontStyle: 'italic',
+  },
   topicText: {
     fontSize: THEME.fontSize.sm,
     color: THEME.colors.textSecondary,
@@ -486,16 +656,16 @@ const styles = StyleSheet.create({
   },
   ratingButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
+    gap: THEME.spacing.xs,
   },
   ratingButton: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: THEME.spacing.lg,
-    marginHorizontal: THEME.spacing.sm,
+    paddingVertical: THEME.spacing.md,
     borderRadius: THEME.borderRadius.lg,
-    minHeight: 70,
+    minHeight: 80,
     elevation: 3,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -508,6 +678,9 @@ const styles = StyleSheet.create({
   ratingButtonMedium: {
     backgroundColor: THEME.colors.warning,
   },
+  ratingButtonGood: {
+    backgroundColor: THEME.colors.primary,
+  },
   ratingButtonEasy: {
     backgroundColor: THEME.colors.success,
   },
@@ -516,6 +689,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'white',
     marginTop: THEME.spacing.xs,
+  },
+  ratingButtonSubtext: {
+    fontSize: THEME.fontSize.xs,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 2,
   },
   emptyContainer: {
     flex: 1,

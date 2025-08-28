@@ -61,6 +61,22 @@ export interface CanvasFile {
 }
 
 // Study Material Types
+export interface FlashcardSet {
+  id: string;
+  name: string;
+  description?: string;
+  course_id: number;
+  topic: string;
+  practice_frequency: 'daily' | 'every_2_days' | 'weekly' | 'bi_weekly' | 'monthly' | 'custom';
+  custom_frequency_days?: number;
+  next_practice_date: Date;
+  created_at: Date;
+  updated_at: Date;
+  flashcard_count: number;
+  last_practiced?: Date;
+  is_active: boolean;
+}
+
 export interface Flashcard {
   id: string;
   question: string;
@@ -74,6 +90,7 @@ export interface Flashcard {
   source_material?: string;
   created_at: Date;
   updated_at: Date;
+  flashcard_set_id?: string; // Link to flashcard set
 }
 
 export interface Quiz {
@@ -189,10 +206,41 @@ export interface SpacedRepetitionItem {
   last_quality: number; // 0-5 scale
 }
 
+// User Profile and Preferences Types
+export interface UserPreferences {
+  // Academic preferences
+  favorite_subjects: string[];
+  difficult_subjects: string[];
+  preferred_learning_style: 'visual' | 'auditory' | 'kinesthetic' | 'reading_writing' | 'mixed';
+  study_goals: string[];
+  
+  // Study schedule preferences
+  preferred_study_times: ('morning' | 'afternoon' | 'evening' | 'night')[];
+  optimal_study_duration: number; // minutes
+  break_frequency: number; // minutes between breaks
+  
+  // Personal interests and context
+  hobbies: string[];
+  career_goals: string[];
+  previous_experience: string[];
+  motivation_factors: string[];
+  
+  // Learning preferences
+  difficulty_preference: 'gradual' | 'challenging' | 'mixed';
+  content_format_preference: ('flashcards' | 'quizzes' | 'summaries' | 'videos' | 'audio' | 'interactive')[];
+  explanation_style: 'detailed' | 'concise' | 'examples' | 'analogies';
+  
+  // AI interaction preferences
+  feedback_frequency: 'immediate' | 'after_session' | 'weekly';
+  encouragement_level: 'minimal' | 'moderate' | 'high';
+  progress_tracking: 'detailed' | 'summary' | 'minimal';
+}
+
 // App State Types
 export interface AppUser {
   canvas_user?: CanvasUser;
   custom_instructions: CustomInstructions;
+  user_preferences?: UserPreferences;
   study_preferences: {
     daily_goal: number; // minutes
     notification_enabled: boolean;

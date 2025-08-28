@@ -9,38 +9,109 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { Text, Card, Button, Chip, Avatar } from 'react-native-paper';
+import { Text, Card, Button, Chip, Avatar, ActivityIndicator, Divider } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { ChatMessage } from '../types';
+import { ChatMessage, CanvasCourse } from '../types';
 import chatbotService, { ChatbotResponse } from '../services/chatbotService';
+import aiService from '../services/aiService';
+import canvasService from '../services/canvasService';
+import spacedRepetitionService from '../services/spacedRepetitionService';
+import flashcardStorage from '../services/flashcardStorage';
 import { useAuth } from '../contexts/AuthContext';
+import { THEME } from '../constants';
 
 const ChatbotScreen: React.FC = () => {
   const { currentUser } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [canvasData, setCanvasData] = useState<string>('');
+  const [courses, setCourses] = useState<CanvasCourse[]>([]);
+  const [studyStats, setStudyStats] = useState<any>(null);
   const [suggestedActions, setSuggestedActions] = useState<string[]>([
-    'What assignments do I have due?',
-    'Show me my courses',
-    'Help me study for my next exam'
+    'What should I study today?',
+    'How am I progressing in my courses?',
+    'Help me understand a difficult concept',
+    'What assignments are due soon?'
   ]);
   const scrollViewRef = useRef<ScrollView>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    // Initialize chatbot service
-    chatbotService.initialize();
-    
-    // Add welcome message
-    const welcomeMessage: ChatMessage = {
-      id: `welcome_${Date.now()}`,
-      content: "Hi! I'm your AI study companion. I can help you with your courses, assignments, and study materials. Try asking me about specific classes or what you need to study!",
-      role: 'assistant',
-      timestamp: new Date(),
-    };
-    setMessages([welcomeMessage]);
+    initializeChatbot();
   }, []);
+  
+  const initializeChatbot = async () => {
+    setIsInitializing(true);
+    
+    try {
+      // Initialize chatbot service
+      chatbotService.initialize();
+      
+      // Load Canvas data if available
+      await loadCanvasContext();
+      
+      // Load study statistics
+      await loadStudyStats();
+      
+      // Add personalized welcome message
+      const welcomeMessage: ChatMessage = {
+        id: `welcome_${Date.now()}`,
+        content: studyStats 
+          ? `Hi! I'm your AI study coach. I see you have ${studyStats.dueToday} cards due for review today and you're on a ${studyStats.streakDays}-day study streak! What would you like to work on?`
+          : "Hi! I'm your AI study coach. I can help you with your courses, study planning, and understanding difficult concepts. I use Socratic questioning to help you learn more effectively. What would you like to explore?",
+        role: 'assistant',
+        timestamp: new Date(),
+      };
+      setMessages([welcomeMessage]);
+      
+    } catch (error) {
+      console.error('Error initializing chatbot:', error);
+      const errorMessage: ChatMessage = {
+        id: `welcome_${Date.now()}`,
+        content: "Hi! I'm your AI study coach. I'm ready to help you learn! What would you like to work on today?",
+        role: 'assistant',
+        timestamp: new Date(),
+      };
+      setMessages([errorMessage]);
+    } finally {
+      setIsInitializing(false);
+    }
+  };
+  
+  const loadCanvasContext = async () => {
+    try {
+      if (canvasService.isAuthenticated()) {
+        // Get user courses
+        const coursesResponse = await canvasService.getUserCourses();
+        if (coursesResponse.success) {
+          setCourses(coursesResponse.data);
+          
+          // Create context summary for AI
+          const contextSummary = `Canvas Context:\n` +
+            `Active Courses (${coursesResponse.data.length}): ${coursesResponse.data.map(c => c.name).join(', ')}\n` +
+            `Recent Course Activity: Available for detailed queries`;
+          
+          setCanvasData(contextSummary);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading Canvas context:', error);
+    }
+  };
+  
+  const loadStudyStats = async () => {
+    try {
+      const memoryData = await flashcardStorage.getMemoryData();
+      const stats = spacedRepetitionService.getStudyStats(memoryData);
+      const analytics = await flashcardStorage.getStudyAnalytics(7); // Last 7 days
+      
+      setStudyStats({ ...stats, ...analytics });
+    } catch (error) {
+      console.error('Error loading study stats:', error);
+    }
+  };
 
   useEffect(() => {
     // Auto-scroll to bottom when new messages are added
@@ -60,48 +131,115 @@ const ChatbotScreen: React.FC = () => {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = inputText.trim();
     setInputText('');
     setIsLoading(true);
 
     try {
-      const response = await chatbotService.processMessage(
-        userMessage.content,
-        undefined, // custom_instructions not yet implemented on UserAccount
-        messages.slice(-5) // Send last 5 messages for context
+      // Use AI coaching service directly for more sophisticated responses
+      const response = await aiService.generateCoachingResponse(
+        currentInput,
+        {
+          previousMessages: messages.slice(-5),
+          courseContext: courses.length > 0 ? {
+            courseName: courses.map(c => c.name).join(', '),
+            courseId: courses[0]?.id || 0
+          } : undefined,
+          canvasData: canvasData || undefined
+        }
       );
 
       if (response.success) {
         const assistantMessage: ChatMessage = {
           id: `assistant_${Date.now()}`,
-          content: response.data.message,
+          content: response.data,
           role: 'assistant',
           timestamp: new Date(),
           metadata: {
-            course_id: response.data.courseContext?.id,
-            topic: response.data.courseContext?.name,
+            coaching: true,
+            hasCanvasContext: !!canvasData
           },
         };
 
         setMessages(prev => [...prev, assistantMessage]);
         
-        if (response.data.suggestedActions) {
-          setSuggestedActions(response.data.suggestedActions);
-        }
+        // Update suggested actions based on conversation context
+        updateSuggestedActions(currentInput, response.data);
       } else {
-        throw new Error(response.error || 'Failed to get response');
+        throw new Error(response.error || 'Failed to get coaching response');
       }
     } catch (error) {
-      console.error('Chat error:', error);
-      const errorMessage: ChatMessage = {
-        id: `error_${Date.now()}`,
-        content: "I'm having trouble right now. Please make sure you're connected to Canvas and try again.",
-        role: 'assistant',
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      console.error('AI Coaching error:', error);
+      
+      // Fallback to basic chatbot if AI coaching fails
+      try {
+        const fallbackResponse = await chatbotService.processMessage(
+          currentInput,
+          undefined,
+          messages.slice(-3)
+        );
+        
+        if (fallbackResponse.success) {
+          const assistantMessage: ChatMessage = {
+            id: `assistant_${Date.now()}`,
+            content: fallbackResponse.data.message,
+            role: 'assistant',
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, assistantMessage]);
+        } else {
+          throw new Error('Both AI coaching and fallback failed');
+        }
+      } catch (fallbackError) {
+        console.error('Fallback also failed:', fallbackError);
+        const errorMessage: ChatMessage = {
+          id: `error_${Date.now()}`,
+          content: "I'm having trouble connecting right now. Please check your internet connection and try again. In the meantime, try reviewing your due flashcards!",
+          role: 'assistant',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      }
     } finally {
       setIsLoading(false);
     }
+  };
+  
+  const updateSuggestedActions = (userInput: string, aiResponse: string) => {
+    const input = userInput.toLowerCase();
+    const response = aiResponse.toLowerCase();
+    
+    let newActions: string[] = [];
+    
+    if (input.includes('study') || input.includes('review')) {
+      newActions = [
+        'What study techniques work best for me?',
+        'How can I improve my retention?',
+        'Show me my weak areas'
+      ];
+    } else if (input.includes('assignment') || input.includes('due')) {
+      newActions = [
+        'Help me prioritize my assignments',
+        'Break down this assignment for me',
+        'What should I focus on first?'
+      ];
+    } else if (input.includes('concept') || input.includes('understand')) {
+      newActions = [
+        'Can you explain this differently?',
+        'What are some real-world examples?',
+        'How does this connect to what I already know?'
+      ];
+    } else {
+      // Default coaching actions
+      newActions = [
+        'What should I study next?',
+        'How am I progressing overall?',
+        'Help me set a study goal',
+        'What learning strategies should I try?'
+      ];
+    }
+    
+    setSuggestedActions(newActions);
   };
 
   const handleSuggestedAction = (action: string) => {
@@ -122,8 +260,8 @@ const ChatbotScreen: React.FC = () => {
         {!isUser && (
           <Avatar.Icon
             size={32}
-            icon="robot"
-            style={styles.avatar}
+            icon={message.metadata?.coaching ? "school" : "robot"}
+            style={[styles.avatar, message.metadata?.coaching ? styles.coachAvatar : null]}
           />
         )}
         <Card
@@ -141,6 +279,30 @@ const ChatbotScreen: React.FC = () => {
             >
               {message.content}
             </Text>
+            {message.metadata?.coaching && (
+              <View style={styles.messageFooter}>
+                <Chip
+                  mode="outlined"
+                  compact
+                  style={styles.coachingChip}
+                  textStyle={styles.coachingChipText}
+                  icon="school"
+                >
+                  AI Coach
+                </Chip>
+                {message.metadata.hasCanvasContext && (
+                  <Chip
+                    mode="outlined"
+                    compact
+                    style={styles.canvasChip}
+                    textStyle={styles.canvasChipText}
+                    icon="link"
+                  >
+                    Canvas
+                  </Chip>
+                )}
+              </View>
+            )}
             {message.metadata?.course_id && (
               <Chip
                 mode="outlined"
@@ -198,20 +360,56 @@ const ChatbotScreen: React.FC = () => {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Study Assistant</Text>
-          <TouchableOpacity
-            onPress={() => {
-              setMessages([]);
-              setSuggestedActions([
-                'What assignments do I have due?',
-                'Show me my courses',
-                'Help me study for my next exam'
-              ]);
-            }}
-          >
-            <Ionicons name="refresh" size={24} color="#6200EE" />
-          </TouchableOpacity>
+          <View style={styles.headerContent}>
+            <Text style={styles.headerTitle}>AI Study Coach</Text>
+            <Text style={styles.headerSubtitle}>
+              {canvasData ? `Connected to ${courses.length} courses` : 'Ready to help you learn'}
+            </Text>
+          </View>
+          <View style={styles.headerActions}>
+            {studyStats && (
+              <View style={styles.statsPreview}>
+                <Text style={styles.statsText}>{studyStats.dueToday} due</Text>
+                <Text style={styles.statsText}>{studyStats.streakDays}🔥</Text>
+              </View>
+            )}
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert(
+                  'Reset Conversation',
+                  'This will clear all messages. Are you sure?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { 
+                      text: 'Reset', 
+                      style: 'destructive',
+                      onPress: () => initializeChatbot()
+                    }
+                  ]
+                );
+              }}
+              style={styles.headerButton}
+            >
+              <Ionicons name="refresh" size={20} color={THEME.colors.primary} />
+            </TouchableOpacity>
+          </View>
         </View>
+        
+        {/* Study Stats Banner */}
+        {studyStats && studyStats.dueToday > 0 && (
+          <View style={styles.statsBanner}>
+            <Ionicons name="time-outline" size={16} color={THEME.colors.warning} />
+            <Text style={styles.statsBannerText}>
+              You have {studyStats.dueToday} cards due for review today!
+            </Text>
+            <TouchableOpacity 
+              style={styles.reviewButton}
+              onPress={() => handleSuggestedAction('Show me my due flashcards')}
+            >
+              <Text style={styles.reviewButtonText}>Review Now</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Messages */}
         <ScrollView
@@ -219,13 +417,21 @@ const ChatbotScreen: React.FC = () => {
           style={styles.messagesContainer}
           contentContainerStyle={styles.messagesContent}
         >
-          {messages.map(renderMessage)}
+          {isInitializing ? (
+            <View style={styles.initializingContainer}>
+              <ActivityIndicator size="large" color={THEME.colors.primary} />
+              <Text style={styles.initializingText}>Loading your study data...</Text>
+            </View>
+          ) : (
+            messages.map(renderMessage)
+          )}
           {isLoading && (
             <View style={styles.loadingContainer}>
-              <Avatar.Icon size={32} icon="robot" style={styles.avatar} />
+              <Avatar.Icon size={32} icon="school" style={[styles.avatar, styles.coachAvatar]} />
               <Card style={styles.loadingCard}>
-                <Card.Content>
-                  <Text style={styles.loadingText}>Thinking...</Text>
+                <Card.Content style={styles.loadingContent}>
+                  <ActivityIndicator size="small" color={THEME.colors.primary} />
+                  <Text style={styles.loadingText}>Thinking like a coach...</Text>
                 </Card.Content>
               </Card>
             </View>
@@ -264,21 +470,72 @@ const ChatbotScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: THEME.colors.background,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: 'white',
+    padding: THEME.spacing.md,
+    backgroundColor: THEME.colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: THEME.colors.border,
+  },
+  headerContent: {
+    flex: 1,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: THEME.fontSize.lg,
     fontWeight: 'bold',
-    color: '#6200EE',
+    color: THEME.colors.primary,
+  },
+  headerSubtitle: {
+    fontSize: THEME.fontSize.sm,
+    color: THEME.colors.textSecondary,
+    marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statsPreview: {
+    alignItems: 'center',
+    marginRight: THEME.spacing.sm,
+  },
+  statsText: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.primary,
+    fontWeight: '500',
+  },
+  headerButton: {
+    padding: THEME.spacing.xs,
+  },
+  statsBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.colors.warning + '20',
+    paddingHorizontal: THEME.spacing.md,
+    paddingVertical: THEME.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.colors.border,
+  },
+  statsBannerText: {
+    flex: 1,
+    fontSize: THEME.fontSize.sm,
+    color: THEME.colors.warning,
+    marginLeft: THEME.spacing.xs,
+    fontWeight: '500',
+  },
+  reviewButton: {
+    backgroundColor: THEME.colors.warning,
+    paddingHorizontal: THEME.spacing.md,
+    paddingVertical: THEME.spacing.xs,
+    borderRadius: THEME.borderRadius.md,
+  },
+  reviewButtonText: {
+    color: 'white',
+    fontSize: THEME.fontSize.sm,
+    fontWeight: '600',
   },
   messagesContainer: {
     flex: 1,
@@ -305,97 +562,148 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   userMessageCard: {
-    backgroundColor: '#6200EE',
+    backgroundColor: THEME.colors.primary,
   },
   assistantMessageCard: {
-    backgroundColor: 'white',
+    backgroundColor: THEME.colors.surface,
+  },
+  coachAvatar: {
+    backgroundColor: THEME.colors.primary,
   },
   messageContent: {
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
   messageText: {
-    fontSize: 16,
-    lineHeight: 20,
+    fontSize: THEME.fontSize.md,
+    lineHeight: 22,
   },
   userMessageText: {
     color: 'white',
   },
   assistantMessageText: {
-    color: '#333',
+    color: THEME.colors.text,
+  },
+  messageFooter: {
+    flexDirection: 'row',
+    marginTop: THEME.spacing.sm,
+    gap: THEME.spacing.xs,
+  },
+  coachingChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: THEME.colors.primary + '20',
+  },
+  coachingChipText: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.primary,
+  },
+  canvasChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: THEME.colors.success + '20',
+  },
+  canvasChipText: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.success,
   },
   courseChip: {
-    marginTop: 8,
+    marginTop: THEME.spacing.sm,
     alignSelf: 'flex-start',
   },
   courseChipText: {
-    fontSize: 12,
+    fontSize: THEME.fontSize.xs,
+  },
+  initializingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: THEME.spacing.xl,
+  },
+  initializingText: {
+    fontSize: THEME.fontSize.md,
+    color: THEME.colors.textSecondary,
+    marginTop: THEME.spacing.md,
   },
   loadingContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    marginBottom: 16,
+    marginBottom: THEME.spacing.md,
   },
   loadingCard: {
-    backgroundColor: 'white',
+    backgroundColor: THEME.colors.surface,
     elevation: 2,
   },
+  loadingContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   loadingText: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: THEME.fontSize.md,
+    color: THEME.colors.textSecondary,
     fontStyle: 'italic',
+    marginLeft: THEME.spacing.sm,
   },
   suggestedActionsContainer: {
-    padding: 16,
-    backgroundColor: 'white',
+    padding: THEME.spacing.md,
+    backgroundColor: THEME.colors.surface,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: THEME.colors.border,
   },
   suggestedActionsTitle: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
+    fontSize: THEME.fontSize.sm,
+    color: THEME.colors.textSecondary,
+    marginBottom: THEME.spacing.sm,
     fontWeight: '500',
   },
   suggestedActionsScroll: {
     flexDirection: 'row',
   },
   suggestedActionButton: {
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    marginRight: 8,
+    backgroundColor: THEME.colors.primary + '20',
+    paddingHorizontal: THEME.spacing.md,
+    paddingVertical: THEME.spacing.sm,
+    borderRadius: THEME.borderRadius.lg,
+    marginRight: THEME.spacing.sm,
+    borderWidth: 1,
+    borderColor: THEME.colors.primary + '40',
   },
   suggestedActionText: {
-    color: '#6200EE',
-    fontSize: 14,
+    color: THEME.colors.primary,
+    fontSize: THEME.fontSize.sm,
     fontWeight: '500',
   },
   inputContainer: {
     flexDirection: 'row',
-    padding: 16,
-    backgroundColor: 'white',
+    padding: THEME.spacing.md,
+    backgroundColor: THEME.colors.surface,
     alignItems: 'flex-end',
+    borderTopWidth: 1,
+    borderTopColor: THEME.colors.border,
   },
   textInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
+    borderColor: THEME.colors.border,
+    borderRadius: THEME.borderRadius.xl,
+    paddingHorizontal: THEME.spacing.md,
+    paddingVertical: THEME.spacing.md,
+    fontSize: THEME.fontSize.md,
     maxHeight: 100,
-    marginRight: 8,
+    marginRight: THEME.spacing.sm,
+    backgroundColor: THEME.colors.background,
+    color: THEME.colors.text,
   },
   sendButton: {
-    backgroundColor: '#6200EE',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    backgroundColor: THEME.colors.primary,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
   },
 });
 

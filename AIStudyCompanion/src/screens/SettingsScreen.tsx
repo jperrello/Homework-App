@@ -93,6 +93,56 @@ export default function SettingsScreen() {
     },
   ] : [];
 
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'This will permanently delete your account and all associated data including:\n\n• All flashcards and study sets\n• Study history and progress\n• Canvas integration settings\n• Custom preferences\n\nThis action cannot be undone. Are you sure you want to continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Final Confirmation',
+              'Are you absolutely sure? This will permanently delete all your data.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Yes, Delete Everything',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      const result = await authService.deleteCurrentAccount();
+                      if (result.success) {
+                        Alert.alert(
+                          'Account Deleted', 
+                          'Your account and all data have been permanently deleted. You will now be returned to the sign up screen.',
+                          [
+                            {
+                              text: 'OK',
+                              onPress: async () => {
+                                await logout();
+                              },
+                            },
+                          ]
+                        );
+                      } else {
+                        Alert.alert('Error', result.error || 'Failed to delete account. Please try again.');
+                      }
+                    } catch (error) {
+                      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
+
   const accountItems: SettingItem[] = [
     {
       id: 'sync-data',
@@ -149,24 +199,38 @@ export default function SettingsScreen() {
     }
   };
 
-  const renderSettingItem = (item: SettingItem) => (
-    <TouchableOpacity
-      key={item.id}
-      style={styles.settingItem}
-      onPress={() => handleItemPress(item)}
-    >
-      <View style={styles.settingIcon}>
-        <Ionicons name={item.icon} size={24} color={THEME.colors.primary} />
-      </View>
-      <View style={styles.settingContent}>
-        <Text style={styles.settingTitle}>{item.title}</Text>
-        {item.subtitle && (
-          <Text style={styles.settingSubtitle}>{item.subtitle}</Text>
-        )}
-      </View>
-      <Ionicons name="chevron-forward" size={20} color={THEME.colors.textSecondary} />
-    </TouchableOpacity>
-  );
+  const renderSettingItem = (item: SettingItem) => {
+    const isDangerous = item.id === 'delete-account';
+    
+    return (
+      <TouchableOpacity
+        key={item.id}
+        style={[styles.settingItem, isDangerous && styles.dangerousSettingItem]}
+        onPress={() => handleItemPress(item)}
+      >
+        <View style={styles.settingIcon}>
+          <Ionicons 
+            name={item.icon} 
+            size={24} 
+            color={isDangerous ? THEME.colors.error : THEME.colors.primary} 
+          />
+        </View>
+        <View style={styles.settingContent}>
+          <Text style={[styles.settingTitle, isDangerous && styles.dangerousSettingTitle]}>
+            {item.title}
+          </Text>
+          {item.subtitle && (
+            <Text style={styles.settingSubtitle}>{item.subtitle}</Text>
+          )}
+        </View>
+        <Ionicons 
+          name="chevron-forward" 
+          size={20} 
+          color={isDangerous ? THEME.colors.error : THEME.colors.textSecondary} 
+        />
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -204,6 +268,10 @@ export default function SettingsScreen() {
           <TouchableOpacity style={styles.dangerItem} onPress={handleSignOut}>
             <Ionicons name="log-out" size={24} color={THEME.colors.error} />
             <Text style={styles.dangerText}>Sign Out</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.dangerItem, { marginTop: THEME.spacing.sm }]} onPress={handleDeleteAccount}>
+            <Ionicons name="trash" size={24} color={THEME.colors.error} />
+            <Text style={styles.dangerText}>Delete Account</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -275,6 +343,14 @@ const styles = StyleSheet.create({
   settingSubtitle: {
     fontSize: THEME.fontSize.sm,
     color: THEME.colors.textSecondary,
+  },
+  dangerousSettingItem: {
+    borderColor: THEME.colors.error,
+    borderWidth: 1,
+    backgroundColor: 'rgba(255, 59, 48, 0.05)',
+  },
+  dangerousSettingTitle: {
+    color: THEME.colors.error,
   },
   dangerSection: {
     marginTop: THEME.spacing.xl,

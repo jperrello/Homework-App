@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { THEME } from '../constants';
+import { THEME, ROUTES } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 
 type CreateAccountRouteProp = RouteProp<RootStackParamList, 'CreateAccount'>;
@@ -60,10 +60,9 @@ export default function CreateAccountScreen() {
       const result = await createAccount(username.trim(), password, canvasUrl, accessToken);
 
       if (result.success) {
-        Alert.alert('Success', `Account created successfully!\nWelcome to your study companion!`, [
-          { text: 'Get Started', onPress: () => {
-            // Navigation will be handled automatically by AuthContext
-            console.log('Account created successfully, user will be redirected to main app');
+        Alert.alert('Success', `Account created successfully!\nLet's set up your study preferences to personalize your experience.`, [
+          { text: 'Continue', onPress: () => {
+            // The navigation will automatically show AccountSetup since needsSetup = true
           }}
         ]);
       } else {

@@ -4,11 +4,13 @@ import canvasService from '../services/canvasService';
 
 interface AuthContextType {
   isAuthenticated: boolean;
+  needsSetup: boolean;
   currentUser: UserAccount | null;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   createAccount: (username: string, password: string, canvasUrl: string, accessToken: string) => Promise<{ success: boolean; error?: string }>;
+  completeSetup: () => Promise<void>;
   checkAuthStatus: () => Promise<void>;
 }
 
@@ -28,6 +30,7 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -41,7 +44,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const user = await authService.getCurrentUser();
       if (user) {
         setCurrentUser(user);
-        setIsAuthenticated(true);
+        if (user.setupCompleted) {
+          setIsAuthenticated(true);
+          setNeedsSetup(false);
+        } else {
+          setIsAuthenticated(false);
+          setNeedsSetup(true);
+        }
         
         // Load Canvas credentials and configure service
         const canvasCredentials = await authService.getCurrentUserCanvasCredentials();
@@ -51,11 +60,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } else {
         setCurrentUser(null);
         setIsAuthenticated(false);
+        setNeedsSetup(false);
       }
     } catch (error) {
       console.error('Error checking auth status:', error);
       setCurrentUser(null);
       setIsAuthenticated(false);
+      setNeedsSetup(false);
     } finally {
       setIsLoading(false);
     }
@@ -67,7 +78,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       if (result.success && result.user) {
         setCurrentUser(result.user);
-        setIsAuthenticated(true);
+        if (result.user.setupCompleted) {
+          setIsAuthenticated(true);
+          setNeedsSetup(false);
+        } else {
+          setIsAuthenticated(false);
+          setNeedsSetup(true);
+        }
         
         // Configure Canvas service
         const canvasCredentials = await authService.getCurrentUserCanvasCredentials();
@@ -96,7 +113,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       if (result.success && result.user) {
         setCurrentUser(result.user);
-        setIsAuthenticated(true);
+        // New accounts always need setup
+        setIsAuthenticated(false);
+        setNeedsSetup(true);
         
         // Canvas service should already be configured from the creation process
         return { success: true };
@@ -114,18 +133,33 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await authService.logout();
       setCurrentUser(null);
       setIsAuthenticated(false);
+      setNeedsSetup(false);
     } catch (error) {
       console.error('Logout error:', error);
     }
   };
 
+  const completeSetup = async () => {
+    try {
+      const success = await authService.completeSetup();
+      if (success) {
+        // Refresh auth status to update the user object and authentication state
+        await checkAuthStatus();
+      }
+    } catch (error) {
+      console.error('Error completing setup:', error);
+    }
+  };
+
   const value: AuthContextType = {
     isAuthenticated,
+    needsSetup,
     currentUser,
     isLoading,
     login,
     logout,
     createAccount,
+    completeSetup,
     checkAuthStatus,
   };
 

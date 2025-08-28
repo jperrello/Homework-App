@@ -323,6 +323,30 @@ class CanvasService {
     const response = await this.getCurrentUser();
     return response.success;
   }
+
+  // Clear all cached Canvas data
+  async clearCachedData(): Promise<void> {
+    try {
+      await this.removeAccessToken();
+      
+      // Clear any other Canvas-related data from AsyncStorage
+      const allKeys = await AsyncStorage.getAllKeys();
+      const canvasKeys = allKeys.filter(key => 
+        key.includes('canvas_') ||
+        key.includes('courses') ||
+        key.includes('assignments') ||
+        key.includes('modules')
+      );
+      
+      for (const key of canvasKeys) {
+        await AsyncStorage.removeItem(key);
+      }
+      
+      console.log('Canvas cached data cleared');
+    } catch (error) {
+      console.error('Error clearing Canvas cached data:', error);
+    }
+  }
 }
 
 export default new CanvasService();
