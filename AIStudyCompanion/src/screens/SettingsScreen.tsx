@@ -75,6 +75,13 @@ export default function SettingsScreen() {
       route: ROUTES.STUDY_PREFERENCES,
     },
     {
+      id: 'openai-settings',
+      title: 'AI Settings',
+      subtitle: 'Configure OpenAI API for enhanced AI features',
+      icon: 'hardware-chip',
+      route: ROUTES.OPENAI_SETTINGS,
+    },
+    {
       id: 'canvas-settings',
       title: 'Canvas Settings',
       subtitle: 'Manage your Canvas connection',

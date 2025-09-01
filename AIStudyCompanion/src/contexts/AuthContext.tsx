@@ -117,7 +117,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsAuthenticated(false);
         setNeedsSetup(true);
         
-        // Canvas service should already be configured from the creation process
+        // Configure Canvas service
+        await canvasService.setCanvasConfig(canvasUrl, accessToken);
+        
         return { success: true };
       } else {
         return { success: false, error: result.error };

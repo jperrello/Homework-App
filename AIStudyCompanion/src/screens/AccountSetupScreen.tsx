@@ -492,8 +492,27 @@ export default function AccountSetupScreen() {
   };
 
   const handleBack = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
+    try {
+      if (currentStep > 0) {
+        setCurrentStep(currentStep - 1);
+      } else {
+        // If on the first step and user tries to go back, return to create account
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        } else {
+          navigation.navigate(ROUTES.CREATE_ACCOUNT as any, {
+            canvasUrl: '',
+            accessToken: '',
+            userInfo: { id: 0, name: '', email: '' }
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback: just stay on current step if navigation fails
+      if (currentStep > 0) {
+        setCurrentStep(currentStep - 1);
+      }
     }
   };
 
@@ -568,14 +587,21 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: THEME.colors.primary,
     paddingHorizontal: THEME.spacing.lg,
-    paddingTop: THEME.spacing.md,
-    paddingBottom: THEME.spacing.lg,
+    paddingTop: THEME.spacing.lg,
+    paddingBottom: THEME.spacing.xl,
+    borderBottomLeftRadius: THEME.borderRadius.xl,
+    borderBottomRightRadius: THEME.borderRadius.xl,
+    shadowColor: THEME.colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: THEME.spacing.md,
+    marginBottom: THEME.spacing.lg,
   },
   headerTitle: {
     fontSize: THEME.fontSize.xl,
@@ -584,28 +610,35 @@ const styles = StyleSheet.create({
   },
   stepIndicator: {
     fontSize: THEME.fontSize.md,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '600',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: THEME.spacing.sm,
+    paddingVertical: THEME.spacing.xs,
+    borderRadius: THEME.borderRadius.md,
   },
   progressBar: {
-    height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 2,
-    marginBottom: THEME.spacing.md,
+    height: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    borderRadius: 3,
+    marginBottom: THEME.spacing.lg,
+    overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
     backgroundColor: '#fff',
-    borderRadius: 2,
+    borderRadius: 3,
   },
   stepTitle: {
-    fontSize: THEME.fontSize.lg,
+    fontSize: THEME.fontSize.xl,
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: THEME.spacing.xs,
   },
   stepSubtitle: {
     fontSize: THEME.fontSize.md,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.9)',
+    lineHeight: 20,
   },
   content: {
     flex: 1,

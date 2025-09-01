@@ -13,6 +13,8 @@ import {
 import { CONTENT_GENERATION, DEFAULT_CUSTOM_INSTRUCTIONS } from '../constants';
 import aiConfig, { AIProvider } from '../utils/aiConfig';
 import userPreferencesService from './userPreferencesService';
+import openaiService from './openaiService';
+import { createLLMClient, GenerateQuizRequest, ContentChunk } from '../lib/llm/client';
 
 // New interfaces for enhanced functionality
 interface HomeworkSolutionOptions extends AIGenerationRequest {
@@ -145,7 +147,39 @@ class AIService {
   }
 
   isReady(): boolean {
-    return this.isConfigured;
+    return this.isConfigured || openaiService.isConfigured();
+  }
+
+  // OpenAI specific methods
+  getOpenAIApiKeyStatus(): { configured: boolean; source: string } {
+    return openaiService.getApiKeyStatus();
+  }
+
+  validateOpenAIConfiguration(): { valid: boolean; error?: string } {
+    return openaiService.validateApiKey();
+  }
+
+  getOpenAIModelInfo(): { name: string; provider: string } {
+    return openaiService.getModelInfo();
+  }
+
+  async testOpenAIConnection(): Promise<{ success: boolean; error?: string }> {
+    return await openaiService.testConnection();
+  }
+
+  // Unified quiz generation that prefers LLM client
+  async generateQuizUnified(options: QuizGenerationOptions): Promise<APIResponse<Quiz>> {
+    // Try LLM client first if OpenAI is configured
+    if (openaiService.isConfigured()) {
+      try {
+        return await this.generateQuizWithLLM(options);
+      } catch (error) {
+        console.warn('LLM client failed, falling back to legacy method:', error);
+      }
+    }
+    
+    // Fallback to legacy implementation
+    return await this.generateQuiz(options);
   }
 
   private buildCustomInstructionsPrompt(instructions: CustomInstructions): string {
@@ -430,7 +464,51 @@ Focus on the most important concepts and ensure variety in question types.`;
     }
   }
 
-  // Quiz Generation
+  // Enhanced Quiz Generation using LLM client
+  async generateQuizWithLLM(options: QuizGenerationOptions): Promise<APIResponse<Quiz>> {
+    try {
+      const studyPreferences = await userPreferencesService.getStudyPreferences();
+      
+      // Convert content to chunks
+      const chunks: ContentChunk[] = [{
+        id: `content_${Date.now()}`,
+        content: options.content,
+        source: {
+          id: options.courseContext?.courseId?.toString() || 'unknown',
+          title: options.courseContext?.courseName || 'Study Material',
+          type: 'assignment'
+        }
+      }];
+
+      const request: GenerateQuizRequest = {
+        chunks,
+        preferences: studyPreferences,
+        title: `Quiz - ${options.courseContext?.courseName || 'Study Session'}`
+      };
+
+      const client = openaiService.getClient();
+      const quiz = await client.generateQuiz(request);
+
+      return {
+        data: {
+          ...quiz,
+          course_id: options.courseContext?.courseId || 0,
+          topic: options.courseContext?.topic || 'General',
+          created_at: new Date(),
+        },
+        success: true,
+      };
+    } catch (error) {
+      console.error('Error generating quiz with LLM:', error);
+      return {
+        data: {} as Quiz,
+        success: false,
+        error: `Failed to generate quiz: ${(error as Error).message}`,
+      };
+    }
+  }
+
+  // Legacy Quiz Generation (fallback)
   async generateQuiz(options: QuizGenerationOptions): Promise<APIResponse<Quiz>> {
     const customPrompt = options.customInstructions ? 
       this.buildCustomInstructionsPrompt(options.customInstructions) : 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Animated,
+  Easing,
 } from 'react-native';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,6 +43,42 @@ export default function StudyQueueScreen() {
   const [activeFilter, setActiveFilter] = useState<'all' | 'due' | 'new' | 'course'>('all');
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('');
   const [summerStudyMode, setSummerStudyMode] = useState(false);
+  
+  // Journey animations
+  const rocketAnimation = useRef(new Animated.Value(0)).current;
+  const journeyProgress = useRef(new Animated.Value(0)).current;
+  const starsAnimation = useRef(new Animated.Value(0)).current;
+
+  // Initialize cosmic animations
+  useEffect(() => {
+    // Rocket hover animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(rocketAnimation, {
+          toValue: 1,
+          duration: 4000,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(rocketAnimation, {
+          toValue: 0,
+          duration: 4000,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Twinkling stars
+    Animated.loop(
+      Animated.timing(starsAnimation, {
+        toValue: 1,
+        duration: 3000,
+        easing: Easing.inOut(Easing.quad),
+        useNativeDriver: true,
+      })
+    ).start();
+  }, []);
 
   // Handle navigation params for new cards
   useEffect(() => {
@@ -105,13 +143,43 @@ export default function StudyQueueScreen() {
       // Calculate streak
       const analytics = await flashcardStorage.getStudyAnalytics(30);
       
-      setStudyStats({
+      const newStats = {
         dueToday: stats.dueToday,
         newCards: stats.newCards,
         totalCards: stats.totalCards,
         completed: completedToday,
         streak: analytics.streakDays
-      });
+      };
+      setStudyStats(newStats);
+      
+      // Animate journey progress based on completion
+      const progressValue = Math.min(completedToday / 30, 1); // Max 30 cards to reach moon
+      Animated.timing(journeyProgress, {
+        toValue: progressValue,
+        duration: 1500,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+      
+      // Show cosmic achievements
+      if (completedToday >= 30 && !showNewCardsNotification) {
+        Alert.alert(
+          '🎆 DAILY GOAL COMPLETE! 🎆',
+          '🎉 Congratulations! You\'ve completed your daily study goal! Your dedication to learning has paid off. Ready for tomorrow\'s session?',
+          [{ text: '🚀 Awesome!', style: 'default' }]
+        );
+      } else if (completedToday >= 15 && completedToday < 30) {
+        // Mid-journey encouragement - only show once
+        setTimeout(() => {
+          if (Math.random() > 0.7) { // 30% chance to avoid spam
+            Alert.alert(
+              '⚡ Halfway There!',
+              '📚 Amazing progress! You\'re halfway through your daily goal. Keep going!',
+              [{ text: '🎆 Full speed ahead!', style: 'default' }]
+            );
+          }
+        }, 2000);
+      }
       
       // Load all available flashcards for manual queue management
       await loadAvailableFlashcards();
@@ -370,9 +438,28 @@ export default function StudyQueueScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={THEME.colors.primary} />
-          <Text style={styles.loadingText}>Loading your study data...</Text>
+        <View style={styles.cosmicLoadingContainer}>
+          <View style={styles.loadingStarsField}>
+            {[...Array(6)].map((_, i) => (
+              <Animated.Text key={i} style={[
+                styles.loadingStar, 
+                {
+                  left: `${15 + (i * 15)}%`,
+                  top: `${30 + (i % 2) * 20}%`,
+                  opacity: starsAnimation.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0.3, 1, 0.3],
+                  }),
+                }
+              ]}>
+                {i % 3 === 0 ? '✨' : i % 3 === 1 ? '⭐' : '💫'}
+              </Animated.Text>
+            ))}
+          </View>
+          <Text style={styles.loadingRocket}>🚀</Text>
+          <ActivityIndicator size="large" color={THEME.colors.primary} style={{marginVertical: THEME.spacing.lg}} />
+          <Text style={styles.cosmicLoadingText}>🛰️ Loading your study queue...</Text>
+          <Text style={styles.loadingSubtext}>Loading your study progress</Text>
         </View>
       </SafeAreaView>
     );
@@ -380,10 +467,11 @@ export default function StudyQueueScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      {/* Study Dashboard Header */}
+      <View style={styles.missionControlHeader}>
         <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Study Queue</Text>
-          <Text style={styles.headerSubtitle}>Your daily study items</Text>
+          <Text style={styles.headerTitle}>🛰️ Study Dashboard</Text>
+          <Text style={styles.headerSubtitle}>Daily Study Progress</Text>
         </View>
         <TouchableOpacity onPress={loadStudyData} style={styles.refreshButton}>
           <Ionicons name="refresh" size={20} color="#fff" />
@@ -391,75 +479,168 @@ export default function StudyQueueScreen() {
       </View>
       
       <ScrollView style={styles.content}>
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
+        {/* Study Progress */}
+        <View style={styles.journeyContainer}>
+          {/* Stars background */}
+          <Animated.View style={[
+            styles.starsField,
+            {
+              opacity: starsAnimation.interpolate({
+                inputRange: [0, 0.5, 1],
+                outputRange: [0.4, 1, 0.4],
+              }),
+            }
+          ]}>
+            {[...Array(8)].map((_, i) => (
+              <Text key={i} style={[styles.fieldStar, {
+                left: `${10 + (i * 12)}%`,
+                top: `${20 + (i % 3) * 15}%`,
+              }]}>{i % 3 === 0 ? '✨' : i % 3 === 1 ? '⭐' : '💫'}</Text>
+            ))}
+          </Animated.View>
+          
+          {/* Journey Path */}
+          <View style={styles.journeyPath}>
+            {/* Earth Start */}
+            <View style={styles.earthStart}>
+              <Text style={styles.celestialBody}>🌍</Text>
+              <Text style={styles.locationLabel}>Earth</Text>
+            </View>
+            
+            {/* Progress Trail */}
+            <View style={styles.progressTrail}>
+              <Animated.View style={[
+                styles.progressFill,
+                {
+                  transform: [{
+                    scaleX: journeyProgress.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 1],
+                    })
+                  }]
+                }
+              ]} />
+              
+              {/* Animated Rocket */}
+              <Animated.View style={[
+                styles.rocketJourney,
+                {
+                  transform: [
+                    {
+                      translateX: journeyProgress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, 250], // Approximate pixel value instead of percentage
+                      })
+                    },
+                    {
+                      translateY: rocketAnimation.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, -8],
+                      }),
+                    },
+                    {
+                      rotate: rocketAnimation.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: ['0deg', '3deg', '0deg'],
+                      }),
+                    },
+                  ],
+                }
+              ]}>
+                <Text style={styles.journeyRocket}>🚀</Text>
+              </Animated.View>
+            </View>
+            
+            {/* Moon Destination */}
+            <View style={styles.moonDestination}>
+              <Text style={styles.celestialBody}>🌙</Text>
+              <Text style={styles.locationLabel}>Moon</Text>
+            </View>
+          </View>
+          
+          {/* Journey Stats */}
+          <View style={styles.journeyStats}>
+            <Text style={styles.progressText}>
+              ⚡ Progress: {Math.round(journeyProgress._value * 100)}% Complete
+            </Text>
+            <Text style={styles.statsText}>
+              🏆 {studyStats.completed}/30 cards completed today
+            </Text>
+          </View>
+        </View>
+        <View style={styles.missionStatsGrid}>
+          <View style={styles.statCard}>
+            <Text style={styles.statEmoji}>⏰</Text>
             <Text style={styles.statNumber}>{studyStats.dueToday}</Text>
             <Text style={styles.statLabel}>Due Today</Text>
           </View>
-          <View style={styles.statItem}>
+          <View style={styles.statCard}>
+            <Text style={styles.statEmoji}>✅</Text>
             <Text style={styles.statNumber}>{studyStats.completed}</Text>
             <Text style={styles.statLabel}>Completed</Text>
           </View>
-          <View style={styles.statItem}>
+          <View style={styles.statCard}>
+            <Text style={styles.statEmoji}>📚</Text>
             <Text style={styles.statNumber}>{studyStats.totalCards}</Text>
             <Text style={styles.statLabel}>Total Cards</Text>
           </View>
-          <View style={styles.statItem}>
+          <View style={styles.statCard}>
+            <Text style={styles.statEmoji}>🔥</Text>
             <Text style={styles.statNumber}>{studyStats.streak}</Text>
             <Text style={styles.statLabel}>Day Streak</Text>
           </View>
         </View>
 
-        {/* Due Cards Section */}
+        {/* Study Cards */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Due for Review ({studyStats.dueToday})</Text>
+          <Text style={styles.sectionTitle}>⚠️ Due Today ({studyStats.dueToday})</Text>
           {studyStats.dueToday > 0 ? (
-            <View style={styles.actionCard}>
-              <View style={styles.actionCardContent}>
-                <Ionicons name="time" size={24} color={THEME.colors.warning} />
-                <Text style={styles.actionCardTitle}>Cards Ready for Review</Text>
-                <Text style={styles.actionCardSubtitle}>
-                  {studyStats.dueToday} cards are due for spaced repetition review
+            <View style={styles.missionCard}>
+              <View style={styles.missionCardContent}>
+                <Text style={styles.missionEmoji}>🚨</Text>
+                <Text style={styles.missionCardTitle}>Priority Review</Text>
+                <Text style={styles.missionCardSubtitle}>
+                  {studyStats.dueToday} cards need your attention today
                 </Text>
               </View>
               <TouchableOpacity 
-                style={[styles.actionButton, styles.warningButton]}
+                style={[styles.missionButton, styles.urgentButton]}
                 onPress={() => startStudySession(getDueCards(), 'due')}
               >
-                <Text style={styles.actionButtonText}>Study Now</Text>
+                <Text style={styles.missionButtonText}>📖 Start Review</Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={styles.infoCard}>
-              <Ionicons name="checkmark-circle" size={24} color={THEME.colors.success} />
-              <Text style={styles.infoText}>All due cards completed! 🎉</Text>
+            <View style={styles.successCard}>
+              <Text style={styles.successEmoji}>✅</Text>
+              <Text style={styles.successText}>Great work! You're all caught up 🎆</Text>
             </View>
           )}
         </View>
 
-        {/* New Cards Section */}
+        {/* New Discovery Cards */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>New Cards ({studyStats.newCards})</Text>
+          <Text style={styles.sectionTitle}>🌠 New Discoveries ({studyStats.newCards})</Text>
           {studyStats.newCards > 0 ? (
-            <View style={styles.actionCard}>
-              <View style={styles.actionCardContent}>
-                <Ionicons name="sparkles" size={24} color={THEME.colors.primary} />
-                <Text style={styles.actionCardTitle}>New Cards to Learn</Text>
-                <Text style={styles.actionCardSubtitle}>
-                  {studyStats.newCards} new cards ready for first review
+            <View style={styles.missionCard}>
+              <View style={styles.missionCardContent}>
+                <Text style={styles.missionEmoji}>✨</Text>
+                <Text style={styles.missionCardTitle}>New Material</Text>
+                <Text style={styles.missionCardSubtitle}>
+                  {studyStats.newCards} new knowledge modules discovered and ready for exploration
                 </Text>
               </View>
               <TouchableOpacity 
-                style={[styles.actionButton, styles.primaryButton]}
+                style={[styles.missionButton, styles.discoveryButton]}
                 onPress={() => startStudySession(getNewCards(), 'new')}
               >
-                <Text style={styles.actionButtonText}>Learn</Text>
+                <Text style={styles.missionButtonText}>🔍 Explore Now</Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={styles.infoCard}>
-              <Ionicons name="school" size={24} color={THEME.colors.textSecondary} />
-              <Text style={styles.infoText}>No new cards available</Text>
+            <View style={styles.neutralCard}>
+              <Text style={styles.neutralEmoji}>🛰️</Text>
+              <Text style={styles.neutralText}>No new territories to explore</Text>
             </View>
           )}
         </View>
@@ -900,22 +1081,50 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: THEME.colors.background,
   },
-  loadingContainer: {
+  cosmicLoadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
   },
-  loadingText: {
+  loadingStarsField: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+  },
+  loadingStar: {
+    position: 'absolute',
+    fontSize: 16,
+  },
+  loadingRocket: {
+    fontSize: 48,
+    marginBottom: THEME.spacing.lg,
+    textShadowColor: THEME.colors.rocket,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
+  },
+  cosmicLoadingText: {
     fontSize: THEME.fontSize.md,
-    color: THEME.colors.textSecondary,
+    color: THEME.colors.text,
     marginTop: THEME.spacing.md,
+    fontWeight: '600',
+    textAlign: 'center',
   },
-  header: {
+  loadingSubtext: {
+    fontSize: THEME.fontSize.sm,
+    color: THEME.colors.textSecondary,
+    marginTop: THEME.spacing.xs,
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  missionControlHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: THEME.spacing.lg,
     backgroundColor: THEME.colors.primary,
+    borderBottomWidth: 2,
+    borderBottomColor: THEME.colors.rocket + '60',
   },
   headerContent: {
     flex: 1,
@@ -925,10 +1134,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: THEME.spacing.xs,
+    textShadowColor: THEME.colors.rocket,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
   },
   headerSubtitle: {
     fontSize: THEME.fontSize.md,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: '500',
   },
   refreshButton: {
     padding: THEME.spacing.sm,
@@ -938,12 +1151,111 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  statsContainer: {
+  // Journey Progress Styles
+  journeyContainer: {
+    backgroundColor: THEME.colors.surface,
+    marginHorizontal: THEME.spacing.lg,
+    marginTop: THEME.spacing.lg,
+    borderRadius: THEME.borderRadius.lg,
+    padding: THEME.spacing.lg,
+    shadowColor: THEME.colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: THEME.colors.primary + '30',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  starsField: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    top: 0,
+    left: 0,
+  },
+  fieldStar: {
+    position: 'absolute',
+    fontSize: 12,
+    opacity: 0.6,
+  },
+  journeyPath: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: THEME.spacing.md,
+    zIndex: 1,
+  },
+  earthStart: {
+    alignItems: 'center',
+    marginRight: THEME.spacing.sm,
+  },
+  moonDestination: {
+    alignItems: 'center',
+    marginLeft: THEME.spacing.sm,
+  },
+  celestialBody: {
+    fontSize: 32,
+    marginBottom: THEME.spacing.xs,
+  },
+  locationLabel: {
+    fontSize: THEME.fontSize.xs,
+    color: THEME.colors.textSecondary,
+    fontWeight: '600',
+  },
+  progressTrail: {
+    flex: 1,
+    height: 6,
+    backgroundColor: THEME.colors.border + '60',
+    borderRadius: 3,
+    position: 'relative',
+    marginHorizontal: THEME.spacing.sm,
+  },
+  progressFill: {
+    height: '100%',
+    width: '100%',
+    backgroundColor: THEME.colors.rocket,
+    borderRadius: 3,
+    shadowColor: THEME.colors.rocket,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    transformOrigin: 'left',
+  },
+  rocketJourney: {
+    position: 'absolute',
+    top: -12,
+    zIndex: 2,
+  },
+  journeyRocket: {
+    fontSize: 24,
+    textShadowColor: THEME.colors.rocket,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+  journeyStats: {
+    alignItems: 'center',
+    marginTop: THEME.spacing.md,
+  },
+  progressText: {
+    fontSize: THEME.fontSize.md,
+    fontWeight: 'bold',
+    color: THEME.colors.primary,
+    marginBottom: THEME.spacing.xs,
+  },
+  statsText: {
+    fontSize: THEME.fontSize.sm,
+    color: THEME.colors.textSecondary,
+    fontWeight: '500',
+  },
+  
+  // Mission Stats Grid
+  missionStatsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     backgroundColor: THEME.colors.surface,
     marginHorizontal: THEME.spacing.lg,
-    marginTop: -THEME.spacing.lg,
+    marginTop: THEME.spacing.lg,
     borderRadius: THEME.borderRadius.lg,
     paddingVertical: THEME.spacing.lg,
     shadowColor: '#000',
@@ -951,19 +1263,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
   },
-  statItem: {
+  statCard: {
     alignItems: 'center',
+    flex: 1,
+  },
+  statEmoji: {
+    fontSize: 24,
+    marginBottom: THEME.spacing.xs,
   },
   statNumber: {
-    fontSize: THEME.fontSize.xxl,
+    fontSize: THEME.fontSize.xl,
     fontWeight: 'bold',
     color: THEME.colors.primary,
     marginBottom: THEME.spacing.xs,
   },
   statLabel: {
-    fontSize: THEME.fontSize.sm,
+    fontSize: THEME.fontSize.xs,
     color: THEME.colors.textSecondary,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   section: {
     marginTop: THEME.spacing.xl,
@@ -975,63 +1296,103 @@ const styles = StyleSheet.create({
     color: THEME.colors.text,
     marginBottom: THEME.spacing.md,
   },
-  actionCard: {
+  // Mission Card Styles
+  missionCard: {
     backgroundColor: THEME.colors.surface,
     borderRadius: THEME.borderRadius.lg,
     padding: THEME.spacing.lg,
     marginBottom: THEME.spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowColor: THEME.colors.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: THEME.colors.primary + '30',
   },
-  actionCardContent: {
+  missionCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: THEME.spacing.md,
   },
-  actionCardTitle: {
-    fontSize: THEME.fontSize.md,
+  missionEmoji: {
+    fontSize: 28,
+    marginRight: THEME.spacing.md,
+  },
+  missionCardTitle: {
+    fontSize: THEME.fontSize.lg,
     fontWeight: 'bold',
     color: THEME.colors.text,
-    marginLeft: THEME.spacing.sm,
     flex: 1,
+    marginBottom: THEME.spacing.xs,
   },
-  actionCardSubtitle: {
+  missionCardSubtitle: {
     fontSize: THEME.fontSize.sm,
     color: THEME.colors.textSecondary,
-    marginLeft: THEME.spacing.sm + 24,
+    lineHeight: 20,
+    flex: 1,
   },
-  actionButton: {
+  missionButton: {
     paddingVertical: THEME.spacing.md,
-    paddingHorizontal: THEME.spacing.lg,
-    borderRadius: THEME.borderRadius.md,
+    paddingHorizontal: THEME.spacing.xl,
+    borderRadius: THEME.borderRadius.lg,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  primaryButton: {
-    backgroundColor: THEME.colors.primary,
-  },
-  warningButton: {
+  urgentButton: {
     backgroundColor: THEME.colors.warning,
   },
-  actionButtonText: {
+  discoveryButton: {
+    backgroundColor: THEME.colors.primary,
+  },
+  missionButtonText: {
     color: '#fff',
     fontSize: THEME.fontSize.md,
     fontWeight: 'bold',
   },
-  infoCard: {
+  successCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.colors.success + '20',
+    borderWidth: 1,
+    borderColor: THEME.colors.success + '40',
+    borderRadius: THEME.borderRadius.lg,
+    padding: THEME.spacing.lg,
+    marginBottom: THEME.spacing.md,
+  },
+  successEmoji: {
+    fontSize: 28,
+    marginRight: THEME.spacing.md,
+  },
+  successText: {
+    fontSize: THEME.fontSize.md,
+    color: THEME.colors.success,
+    fontWeight: '600',
+    flex: 1,
+  },
+  neutralCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.colors.surface,
     borderRadius: THEME.borderRadius.lg,
     padding: THEME.spacing.lg,
     marginBottom: THEME.spacing.md,
+    borderWidth: 1,
+    borderColor: THEME.colors.border,
   },
-  infoText: {
+  neutralEmoji: {
+    fontSize: 28,
+    marginRight: THEME.spacing.md,
+  },
+  neutralText: {
     fontSize: THEME.fontSize.md,
     color: THEME.colors.textSecondary,
-    marginLeft: THEME.spacing.sm,
+    flex: 1,
+    fontStyle: 'italic',
   },
   studyOptionsContainer: {
     flexDirection: 'row',

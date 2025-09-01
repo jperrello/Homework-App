@@ -12,12 +12,13 @@ import {
 import { Text, Card, Button, Chip, Avatar, ActivityIndicator, Divider } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { ChatMessage, CanvasCourse } from '../types';
+import { ChatMessage, CanvasCourse, CustomInstructions } from '../types';
 import chatbotService, { ChatbotResponse } from '../services/chatbotService';
 import aiService from '../services/aiService';
 import canvasService from '../services/canvasService';
 import spacedRepetitionService from '../services/spacedRepetitionService';
 import flashcardStorage from '../services/flashcardStorage';
+import userPreferencesService from '../services/userPreferencesService';
 import { useAuth } from '../contexts/AuthContext';
 import { THEME } from '../constants';
 
@@ -29,6 +30,7 @@ const ChatbotScreen: React.FC = () => {
   const [canvasData, setCanvasData] = useState<string>('');
   const [courses, setCourses] = useState<CanvasCourse[]>([]);
   const [studyStats, setStudyStats] = useState<any>(null);
+  const [customInstructions, setCustomInstructions] = useState<CustomInstructions | null>(null);
   const [suggestedActions, setSuggestedActions] = useState<string[]>([
     'What should I study today?',
     'How am I progressing in my courses?',
@@ -48,6 +50,9 @@ const ChatbotScreen: React.FC = () => {
     try {
       // Initialize chatbot service
       chatbotService.initialize();
+      
+      // Load user preferences and custom instructions
+      await loadUserPreferences();
       
       // Load Canvas data if available
       await loadCanvasContext();
@@ -101,6 +106,15 @@ const ChatbotScreen: React.FC = () => {
     }
   };
   
+  const loadUserPreferences = async () => {
+    try {
+      const instructions = await userPreferencesService.getCustomInstructions();
+      setCustomInstructions(instructions);
+    } catch (error) {
+      console.error('Error loading user preferences:', error);
+    }
+  };
+  
   const loadStudyStats = async () => {
     try {
       const memoryData = await flashcardStorage.getMemoryData();
@@ -145,7 +159,8 @@ const ChatbotScreen: React.FC = () => {
             courseName: courses.map(c => c.name).join(', '),
             courseId: courses[0]?.id || 0
           } : undefined,
-          canvasData: canvasData || undefined
+          canvasData: canvasData || undefined,
+          customInstructions: customInstructions || undefined
         }
       );
 

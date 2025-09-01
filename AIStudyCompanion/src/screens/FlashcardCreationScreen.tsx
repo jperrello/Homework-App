@@ -36,6 +36,11 @@ export default function FlashcardCreationScreen() {
   const [selectedAssignments, setSelectedAssignments] = useState<string[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   
+  // Dropdown visibility states
+  const [showModulesDropdown, setShowModulesDropdown] = useState(false);
+  const [showAssignmentsDropdown, setShowAssignmentsDropdown] = useState(false);
+  const [showFilesDropdown, setShowFilesDropdown] = useState(false);
+  
   // Configuration
   const [additionalInfo, setAdditionalInfo] = useState('');
   const [flashcardCount, setFlashcardCount] = useState('10');
@@ -123,6 +128,11 @@ export default function FlashcardCreationScreen() {
     setSelectedModules([]);
     setSelectedAssignments([]);
     setSelectedFiles([]);
+    
+    // Reset dropdown states
+    setShowModulesDropdown(false);
+    setShowAssignmentsDropdown(false);
+    setShowFilesDropdown(false);
     
     await loadCourseContent(course.id);
   };
@@ -399,90 +409,201 @@ export default function FlashcardCreationScreen() {
                 {/* Modules Selection */}
                 {modules.length > 0 && (
                   <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Modules ({selectedModules.length} selected)</Text>
-                    <View style={styles.itemsList}>
-                      {modules.map((module) => (
-                        <TouchableOpacity
-                          key={module.id}
-                          style={[
-                            styles.itemCard,
-                            selectedModules.includes(module.id.toString()) && styles.selectedItem
-                          ]}
-                          onPress={() => toggleSelection(module.id.toString(), selectedModules, setSelectedModules)}
-                        >
-                          <View style={styles.itemInfo}>
-                            <Text style={styles.itemTitle}>{module.name}</Text>
-                          </View>
-                          <Ionicons
-                            name={selectedModules.includes(module.id.toString()) ? "checkmark-circle" : "radio-button-off"}
-                            size={24}
-                            color={selectedModules.includes(module.id.toString()) ? THEME.colors.primary : THEME.colors.textSecondary}
-                          />
-                        </TouchableOpacity>
-                      ))}
-                    </View>
+                    <Text style={styles.sectionTitle}>Modules ({modules.length} available)</Text>
+                    <TouchableOpacity 
+                      style={[styles.dropdownHeader, showModulesDropdown && styles.dropdownHeaderExpanded]}
+                      onPress={() => setShowModulesDropdown(!showModulesDropdown)}
+                    >
+                      <View style={styles.dropdownHeaderLeft}>
+                        <Text style={styles.dropdownTitle}>
+                          {selectedModules.length > 0 
+                            ? `${selectedModules.length} module${selectedModules.length !== 1 ? 's' : ''} selected` 
+                            : 'Select modules'}
+                        </Text>
+                        {selectedModules.length > 0 && (
+                          <Text style={styles.dropdownSubtitle}>
+                            {selectedModules.slice(0, 2).map(id => {
+                              const module = modules.find(m => m.id.toString() === id);
+                              return module?.name;
+                            }).filter(Boolean).join(', ')}{selectedModules.length > 2 ? ` and ${selectedModules.length - 2} more...` : ''}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.dropdownIconContainer}>
+                        <Ionicons 
+                          name={showModulesDropdown ? "chevron-up" : "chevron-down"} 
+                          size={20} 
+                          color={THEME.colors.primary} 
+                        />
+                      </View>
+                    </TouchableOpacity>
+                    
+                    {showModulesDropdown && (
+                      <View style={styles.dropdownContent}>
+                        <ScrollView style={styles.dropdownScrollView} nestedScrollEnabled>
+                          {modules.map((module) => (
+                            <TouchableOpacity
+                              key={module.id}
+                              style={[
+                                styles.dropdownItem,
+                                selectedModules.includes(module.id.toString()) && styles.selectedDropdownItem
+                              ]}
+                              onPress={() => toggleSelection(module.id.toString(), selectedModules, setSelectedModules)}
+                            >
+                              <View style={styles.itemInfo}>
+                                <Text style={[
+                                  styles.dropdownItemTitle,
+                                  selectedModules.includes(module.id.toString()) && styles.selectedDropdownItemText
+                                ]}>
+                                  {module.name}
+                                </Text>
+                              </View>
+                              <Ionicons
+                                name={selectedModules.includes(module.id.toString()) ? "checkmark-circle" : "radio-button-off"}
+                                size={22}
+                                color={selectedModules.includes(module.id.toString()) ? THEME.colors.primary : THEME.colors.textSecondary}
+                              />
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    )}
                   </View>
                 )}
 
                 {/* Assignments Selection */}
                 {assignments.length > 0 && (
                   <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Assignments ({selectedAssignments.length} selected)</Text>
-                    <View style={styles.itemsList}>
-                      {assignments.map((assignment) => (
-                        <TouchableOpacity
-                          key={assignment.id}
-                          style={[
-                            styles.itemCard,
-                            selectedAssignments.includes(assignment.id.toString()) && styles.selectedItem
-                          ]}
-                          onPress={() => toggleSelection(assignment.id.toString(), selectedAssignments, setSelectedAssignments)}
-                        >
-                          <View style={styles.itemInfo}>
-                            <Text style={styles.itemTitle}>{assignment.name}</Text>
-                            {assignment.due_at && (
-                              <Text style={styles.itemSubtitle}>
-                                Due: {new Date(assignment.due_at).toLocaleDateString()}
-                              </Text>
-                            )}
-                          </View>
-                          <Ionicons
-                            name={selectedAssignments.includes(assignment.id.toString()) ? "checkmark-circle" : "radio-button-off"}
-                            size={24}
-                            color={selectedAssignments.includes(assignment.id.toString()) ? THEME.colors.primary : THEME.colors.textSecondary}
-                          />
-                        </TouchableOpacity>
-                      ))}
-                    </View>
+                    <Text style={styles.sectionTitle}>Assignments ({assignments.length} available)</Text>
+                    <TouchableOpacity 
+                      style={[styles.dropdownHeader, showAssignmentsDropdown && styles.dropdownHeaderExpanded]}
+                      onPress={() => setShowAssignmentsDropdown(!showAssignmentsDropdown)}
+                    >
+                      <View style={styles.dropdownHeaderLeft}>
+                        <Text style={styles.dropdownTitle}>
+                          {selectedAssignments.length > 0 
+                            ? `${selectedAssignments.length} assignment${selectedAssignments.length !== 1 ? 's' : ''} selected` 
+                            : 'Select assignments'}
+                        </Text>
+                        {selectedAssignments.length > 0 && (
+                          <Text style={styles.dropdownSubtitle}>
+                            {selectedAssignments.slice(0, 2).map(id => {
+                              const assignment = assignments.find(a => a.id.toString() === id);
+                              return assignment?.name;
+                            }).filter(Boolean).join(', ')}{selectedAssignments.length > 2 ? ` and ${selectedAssignments.length - 2} more...` : ''}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.dropdownIconContainer}>
+                        <Ionicons 
+                          name={showAssignmentsDropdown ? "chevron-up" : "chevron-down"} 
+                          size={20} 
+                          color={THEME.colors.primary} 
+                        />
+                      </View>
+                    </TouchableOpacity>
+                    
+                    {showAssignmentsDropdown && (
+                      <View style={styles.dropdownContent}>
+                        <ScrollView style={styles.dropdownScrollView} nestedScrollEnabled>
+                          {assignments.map((assignment) => (
+                            <TouchableOpacity
+                              key={assignment.id}
+                              style={[
+                                styles.dropdownItem,
+                                selectedAssignments.includes(assignment.id.toString()) && styles.selectedDropdownItem
+                              ]}
+                              onPress={() => toggleSelection(assignment.id.toString(), selectedAssignments, setSelectedAssignments)}
+                            >
+                              <View style={styles.itemInfo}>
+                                <Text style={[
+                                  styles.dropdownItemTitle,
+                                  selectedAssignments.includes(assignment.id.toString()) && styles.selectedDropdownItemText
+                                ]}>
+                                  {assignment.name}
+                                </Text>
+                                {assignment.due_at && (
+                                  <Text style={styles.dropdownItemSubtitle}>
+                                    Due: {new Date(assignment.due_at).toLocaleDateString()}
+                                  </Text>
+                                )}
+                              </View>
+                              <Ionicons
+                                name={selectedAssignments.includes(assignment.id.toString()) ? "checkmark-circle" : "radio-button-off"}
+                                size={22}
+                                color={selectedAssignments.includes(assignment.id.toString()) ? THEME.colors.primary : THEME.colors.textSecondary}
+                              />
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    )}
                   </View>
                 )}
 
                 {/* Files Selection */}
                 {files.length > 0 && (
                   <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Files ({selectedFiles.length} selected)</Text>
-                    <View style={styles.itemsList}>
-                      {files.map((file) => (
-                        <TouchableOpacity
-                          key={file.id}
-                          style={[
-                            styles.itemCard,
-                            selectedFiles.includes(file.id.toString()) && styles.selectedItem
-                          ]}
-                          onPress={() => toggleSelection(file.id.toString(), selectedFiles, setSelectedFiles)}
-                        >
-                          <View style={styles.itemInfo}>
-                            <Text style={styles.itemTitle}>{file.display_name}</Text>
-                            <Text style={styles.itemSubtitle}>{file.content_type}</Text>
-                          </View>
-                          <Ionicons
-                            name={selectedFiles.includes(file.id.toString()) ? "checkmark-circle" : "radio-button-off"}
-                            size={24}
-                            color={selectedFiles.includes(file.id.toString()) ? THEME.colors.primary : THEME.colors.textSecondary}
-                          />
-                        </TouchableOpacity>
-                      ))}
-                    </View>
+                    <Text style={styles.sectionTitle}>Files ({files.length} available)</Text>
+                    <TouchableOpacity 
+                      style={[styles.dropdownHeader, showFilesDropdown && styles.dropdownHeaderExpanded]}
+                      onPress={() => setShowFilesDropdown(!showFilesDropdown)}
+                    >
+                      <View style={styles.dropdownHeaderLeft}>
+                        <Text style={styles.dropdownTitle}>
+                          {selectedFiles.length > 0 
+                            ? `${selectedFiles.length} file${selectedFiles.length !== 1 ? 's' : ''} selected` 
+                            : 'Select files'}
+                        </Text>
+                        {selectedFiles.length > 0 && (
+                          <Text style={styles.dropdownSubtitle}>
+                            {selectedFiles.slice(0, 2).map(id => {
+                              const file = files.find(f => f.id.toString() === id);
+                              return file?.display_name;
+                            }).filter(Boolean).join(', ')}{selectedFiles.length > 2 ? ` and ${selectedFiles.length - 2} more...` : ''}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.dropdownIconContainer}>
+                        <Ionicons 
+                          name={showFilesDropdown ? "chevron-up" : "chevron-down"} 
+                          size={20} 
+                          color={THEME.colors.primary} 
+                        />
+                      </View>
+                    </TouchableOpacity>
+                    
+                    {showFilesDropdown && (
+                      <View style={styles.dropdownContent}>
+                        <ScrollView style={styles.dropdownScrollView} nestedScrollEnabled>
+                          {files.map((file) => (
+                            <TouchableOpacity
+                              key={file.id}
+                              style={[
+                                styles.dropdownItem,
+                                selectedFiles.includes(file.id.toString()) && styles.selectedDropdownItem
+                              ]}
+                              onPress={() => toggleSelection(file.id.toString(), selectedFiles, setSelectedFiles)}
+                            >
+                              <View style={styles.itemInfo}>
+                                <Text style={[
+                                  styles.dropdownItemTitle,
+                                  selectedFiles.includes(file.id.toString()) && styles.selectedDropdownItemText
+                                ]}>
+                                  {file.display_name}
+                                </Text>
+                                <Text style={styles.dropdownItemSubtitle}>{file.content_type}</Text>
+                              </View>
+                              <Ionicons
+                                name={selectedFiles.includes(file.id.toString()) ? "checkmark-circle" : "radio-button-off"}
+                                size={22}
+                                color={selectedFiles.includes(file.id.toString()) ? THEME.colors.primary : THEME.colors.textSecondary}
+                              />
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    )}
                   </View>
                 )}
 
@@ -956,5 +1077,107 @@ const styles = StyleSheet.create({
   },
   selectedFrequencyItemText: {
     color: THEME.colors.primary,
+  },
+  
+  // Dropdown styles
+  dropdownHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: THEME.colors.surface,
+    padding: THEME.spacing.lg,
+    borderRadius: THEME.borderRadius.lg,
+    borderWidth: 2,
+    borderColor: THEME.colors.border,
+    shadowColor: THEME.colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  dropdownHeaderExpanded: {
+    borderColor: THEME.colors.primary,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderBottomWidth: 0,
+  },
+  dropdownHeaderLeft: {
+    flex: 1,
+  },
+  dropdownTitle: {
+    fontSize: THEME.fontSize.md,
+    fontWeight: '600',
+    color: THEME.colors.text,
+    marginBottom: THEME.spacing.xs,
+  },
+  dropdownSubtitle: {
+    fontSize: THEME.fontSize.sm,
+    color: THEME.colors.textSecondary,
+    lineHeight: 18,
+  },
+  dropdownIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: THEME.colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dropdownContent: {
+    backgroundColor: THEME.colors.surface,
+    borderRadius: THEME.borderRadius.lg,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    borderWidth: 2,
+    borderColor: THEME.colors.primary,
+    borderTopWidth: 1,
+    borderTopColor: THEME.colors.border + '50',
+    maxHeight: 280,
+    shadowColor: THEME.colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  dropdownScrollView: {
+    maxHeight: 260,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: THEME.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.colors.border + '30',
+  },
+  selectedDropdownItem: {
+    backgroundColor: THEME.colors.primary + '15',
+    borderLeftWidth: 4,
+    borderLeftColor: THEME.colors.primary,
+  },
+  dropdownItemTitle: {
+    fontSize: THEME.fontSize.md,
+    color: THEME.colors.text,
+    fontWeight: '500',
+    marginBottom: THEME.spacing.xs,
+    lineHeight: 20,
+  },
+  selectedDropdownItemText: {
+    color: THEME.colors.primary,
+    fontWeight: '600',
+  },
+  dropdownItemSubtitle: {
+    fontSize: THEME.fontSize.sm,
+    color: THEME.colors.textSecondary,
+    lineHeight: 16,
+  },
+  dropdownNote: {
+    fontSize: THEME.fontSize.sm,
+    color: THEME.colors.textSecondary,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    padding: THEME.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: THEME.colors.border,
+    backgroundColor: THEME.colors.background,
   },
 });

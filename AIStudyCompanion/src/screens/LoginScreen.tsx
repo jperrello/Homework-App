@@ -59,9 +59,21 @@ export default function LoginScreen() {
     navigation.navigate(ROUTES.CANVAS_AUTH);
   };
 
+  const goBack = () => {
+    navigation.goBack();
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
+        {/* Back Button */}
+        <View style={styles.backButtonContainer}>
+          <TouchableOpacity style={styles.backButton} onPress={goBack} disabled={isLoading}>
+            <Ionicons name="arrow-back" size={24} color={THEME.colors.primary} />
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Header */}
         <View style={styles.header}>
           <Ionicons name="lock-closed" size={64} color={THEME.colors.primary} />
@@ -143,6 +155,23 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: THEME.spacing.lg,
     justifyContent: 'center',
+  },
+  backButtonContainer: {
+    position: 'absolute',
+    top: THEME.spacing.lg,
+    left: THEME.spacing.lg,
+    zIndex: 1,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: THEME.spacing.sm,
+  },
+  backButtonText: {
+    marginLeft: THEME.spacing.sm,
+    fontSize: THEME.fontSize.md,
+    color: THEME.colors.primary,
+    fontWeight: '600',
   },
   header: {
     alignItems: 'center',

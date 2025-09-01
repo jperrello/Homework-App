@@ -137,22 +137,32 @@ export const ROUTES = {
   CUSTOM_INSTRUCTIONS: 'CustomInstructions',
   STUDY_PREFERENCES: 'StudyPreferences',
   CANVAS_SETTINGS: 'CanvasSettings',
+  OPENAI_SETTINGS: 'OpenAISettings',
   DEV_TOKEN_MANAGER: 'DevTokenManager',
 } as const;
 
-// Colors and Theme
+// Colors and Theme - Study Progress Theme 🚀
 export const THEME = {
   colors: {
-    primary: '#007AFF',
-    secondary: '#5856D6',
-    success: '#34C759',
-    warning: '#FF9500',
-    error: '#FF3B30',
-    background: '#F2F2F7',
-    surface: '#FFFFFF',
-    text: '#000000',
-    textSecondary: '#8E8E93',
-    border: '#C6C6C8',
+    // Study theme colors
+    primary: '#4C63D2', // Cosmic blue
+    secondary: '#7C3AED', // Nebula purple
+    success: '#10B981', // Alien green
+    warning: '#F59E0B', // Solar orange
+    error: '#EF4444', // Mars red
+    background: '#0F0F23', // Deep navy
+    surface: '#1A1B3A', // Dark surface
+    text: '#E2E8F0', // Light text
+    textSecondary: '#94A3B8', // Secondary gray
+    border: '#334155', // Border gray
+    
+    // Special theme colors
+    rocket: '#FF6B35', // Accent orange
+    moon: '#FEF3C7', // Golden yellow
+    stars: '#FCD34D', // Bright gold
+    galaxy: '#8B5CF6', // Purple accent
+    earth: '#3B82F6', // Blue accent
+    cosmic: 'rgba(124, 58, 237, 0.3)', // Purple mist
   },
   
   spacing: {

@@ -60,11 +60,9 @@ export default function CreateAccountScreen() {
       const result = await createAccount(username.trim(), password, canvasUrl, accessToken);
 
       if (result.success) {
-        Alert.alert('Success', `Account created successfully!\nLet's set up your study preferences to personalize your experience.`, [
-          { text: 'Continue', onPress: () => {
-            // The navigation will automatically show AccountSetup since needsSetup = true
-          }}
-        ]);
+        console.log('Account created successfully, navigating to setup...');
+        // Explicitly navigate to account setup
+        navigation.navigate(ROUTES.ACCOUNT_SETUP);
       } else {
         Alert.alert('Error', result.error || 'Failed to create account');
       }
@@ -77,7 +75,17 @@ export default function CreateAccountScreen() {
   };
 
   const handleBackToCanvas = () => {
-    navigation.goBack();
+    try {
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation.navigate(ROUTES.CANVAS_AUTH);
+      }
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback navigation
+      navigation.navigate(ROUTES.CANVAS_AUTH);
+    }
   };
 
   return (

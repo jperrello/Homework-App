@@ -24,6 +24,7 @@ import ContentViewerScreen from '../screens/ContentViewerScreen';
 import CustomInstructionsScreen from '../screens/CustomInstructionsScreen';
 import StudyPreferencesScreen from '../screens/StudyPreferencesScreen';
 import CanvasSettingsScreen from '../screens/CanvasSettingsScreen';
+import OpenAISettingsScreen from '../screens/OpenAISettingsScreen';
 import DevTokenManagerScreen from '../screens/DevTokenManagerScreen';
 
 // Type definitions for navigation
@@ -70,6 +71,7 @@ export type SettingsStackParamList = {
   [ROUTES.CUSTOM_INSTRUCTIONS]: undefined;
   [ROUTES.STUDY_PREFERENCES]: undefined;
   [ROUTES.CANVAS_SETTINGS]: undefined;
+  [ROUTES.OPENAI_SETTINGS]: undefined;
   [ROUTES.DEV_TOKEN_MANAGER]: undefined;
 };
 
@@ -185,6 +187,11 @@ function SettingsStackNavigator() {
         options={{ title: 'Canvas Settings' }}
       />
       <SettingsStack.Screen 
+        name={ROUTES.OPENAI_SETTINGS} 
+        component={OpenAISettingsScreen}
+        options={{ title: 'AI Settings' }}
+      />
+      <SettingsStack.Screen 
         name={ROUTES.DEV_TOKEN_MANAGER} 
         component={DevTokenManagerScreen}
         options={{ title: 'Dev Token Manager' }}
@@ -199,32 +206,67 @@ function MainAppNavigator() {
     <MainTab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
-          let iconName: keyof typeof Ionicons.glyphMap;
-
+          // Cosmic themed icons with emojis
           switch (route.name) {
             case ROUTES.STUDY_QUEUE:
-              iconName = focused ? 'library' : 'library-outline';
-              break;
+              return (
+                <View style={{ alignItems: 'center' }}>
+                  {focused ? 
+                    <Text style={{ fontSize: size + 2 }}>🚀</Text> : 
+                    <Text style={{ fontSize: size, opacity: 0.7 }}>🛸</Text>
+                  }
+                </View>
+              );
             case ROUTES.CONTENT_CREATOR:
-              iconName = focused ? 'create' : 'create-outline';
-              break;
+              return (
+                <View style={{ alignItems: 'center' }}>
+                  {focused ? 
+                    <Text style={{ fontSize: size + 2 }}>⭐</Text> : 
+                    <Text style={{ fontSize: size, opacity: 0.7 }}>✨</Text>
+                  }
+                </View>
+              );
             case ROUTES.CHATBOT:
-              iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
-              break;
+              return (
+                <View style={{ alignItems: 'center' }}>
+                  {focused ? 
+                    <Text style={{ fontSize: size + 2 }}>🤖</Text> : 
+                    <Text style={{ fontSize: size, opacity: 0.7 }}>💬</Text>
+                  }
+                </View>
+              );
             case ROUTES.SETTINGS:
-              iconName = focused ? 'settings' : 'settings-outline';
-              break;
+              return (
+                <View style={{ alignItems: 'center' }}>
+                  {focused ? 
+                    <Text style={{ fontSize: size + 2 }}>🛠️</Text> : 
+                    <Text style={{ fontSize: size, opacity: 0.7 }}>⚙️</Text>
+                  }
+                </View>
+              );
             default:
-              iconName = 'help-outline';
+              return <Ionicons name={'help-outline'} size={size} color={color} />;
           }
-
-          return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: THEME.colors.primary,
+        tabBarActiveTintColor: THEME.colors.stars,
         tabBarInactiveTintColor: THEME.colors.textSecondary,
         tabBarStyle: {
           backgroundColor: THEME.colors.surface,
-          borderTopColor: THEME.colors.border,
+          borderTopColor: THEME.colors.primary + '40',
+          borderTopWidth: 2,
+          paddingTop: 8,
+          paddingBottom: 8,
+          height: 70,
+          shadowColor: THEME.colors.primary,
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
+          elevation: 10,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          marginTop: 4,
         },
         headerShown: false, // We handle headers in individual stack navigators
       })}
@@ -237,12 +279,12 @@ function MainAppNavigator() {
       <MainTab.Screen 
         name={ROUTES.CONTENT_CREATOR} 
         component={ContentCreatorStackNavigator}
-        options={{ title: 'Create Content' }}
+        options={{ title: 'Create' }}
       />
       <MainTab.Screen 
         name={ROUTES.CHATBOT} 
         component={ChatbotScreen}
-        options={{ title: 'Study Assistant' }}
+        options={{ title: 'AI Tutor' }}
       />
       <MainTab.Screen 
         name={ROUTES.SETTINGS} 
@@ -257,13 +299,14 @@ function MainAppNavigator() {
 function AuthNavigator() {
   const { isAuthenticated, needsSetup, isLoading } = useAuth();
 
-  // Show loading screen while checking auth status
+  // Show cosmic loading screen while checking auth status
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: THEME.colors.background }}>
+        <Text style={{ fontSize: 60, marginBottom: 20 }}>🚀</Text>
         <ActivityIndicator size="large" color={THEME.colors.primary} />
-        <Text style={{ marginTop: 16, fontSize: 16, color: THEME.colors.textSecondary }}>
-          Loading...
+        <Text style={{ marginTop: 16, fontSize: 16, color: THEME.colors.textSecondary, fontWeight: '500' }}>
+          🛰️ Loading...
         </Text>
       </View>
     );
@@ -281,8 +324,21 @@ function AuthNavigator() {
       ) : needsSetup ? (
         // Setup screens - user has an account but needs to complete setup
         <>
-          <RootStack.Screen name={ROUTES.ACCOUNT_SETUP} component={AccountSetupScreen} />
-          <RootStack.Screen name={ROUTES.CREATE_ACCOUNT} component={CreateAccountScreen} />
+          <RootStack.Screen 
+            name={ROUTES.ACCOUNT_SETUP} 
+            component={AccountSetupScreen}
+            options={{ gestureEnabled: false }}
+          />
+          <RootStack.Screen 
+            name={ROUTES.CREATE_ACCOUNT} 
+            component={CreateAccountScreen} 
+            options={{ gestureEnabled: false }}
+          />
+          <RootStack.Screen 
+            name={ROUTES.CANVAS_AUTH} 
+            component={CanvasAuthScreen} 
+            options={{ gestureEnabled: false }}
+          />
         </>
       ) : (
         // Authentication screens - no account or not logged in
