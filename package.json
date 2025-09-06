@@ -1,0 +1,23 @@
+{
+  "name": "claude-code",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jperrello/Homework-App.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jperrello/Homework-App/issues"
+  },
+  "homepage": "https://github.com/jperrello/Homework-App#readme",
+  "description": "",
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}
